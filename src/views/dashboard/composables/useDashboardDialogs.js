@@ -1,0 +1,816 @@
+import { reactive, ref, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { appConfig } from '@/config/app/app.config'
+import { projectApi } from '@/api/project'
+import { getErrorMessage } from '@/utils/request'
+import {
+  DEFAULT_DB_PASSWORD,
+  DEFAULT_DB_PORT,
+  DEFAULT_DB_USER,
+  PROJECT_CREATING_TEXT,
+  PROJECT_SETTING_TEXT,
+  PROJECT_RUNNING_TEXT,
+  PROJECT_STOPPED_TEXT,
+} from './dialogConstants'
+import {
+  fillDeleteText,
+} from './dialogUtils'
+import { useCreateProjectDialog } from './project-create/useCreateProjectDialog'
+import { useServerUserDialog } from './server-user/useServerUserDialog'
+import { useProjectDeleteDialog } from './project-delete/useProjectDeleteDialog'
+import {
+  buildProjectSettingPayload,
+  buildProjectSettingStorePatch,
+  fillProjectSettingForm,
+} from './project-setting/projectSettingMapper'
+
+export const useDashboardDialogs = (options) => {
+  const {
+    layout,
+    projectStore,
+    activeSessionAlias,
+    activeSessionIp,
+    appendTerminal,
+    ensureCreateProjectSession,
+    ensureProjectTaskSession,
+    appendSessionLine,
+    appendSessionLines,
+    lockSession,
+    unlockSession,
+    canAction,
+    projectDeleteSuccessTextTemplate,
+    userDeleteConfirmTextTemplate,
+    userDeleteSuccessTextTemplate,
+  } = options
+
+  const selectedProject = ref(null)
+  const selectedProjectDetail = ref(null)
+  const projectDetailLoading = ref(false)
+  const projectDrawerVisible = ref(false)
+  const projectLogDialogVisible = ref(false)
+  const projectLogLoading = ref(false)
+  const projectLogData = ref({ project_id: 0, project_name: '', total: 0, data: [] })
+
+  const projectDialogVisible = ref(false)
+  const userDialogVisible = ref(false)
+  const envDialogVisible = ref(false)
+  const serverDialogVisible = ref(false)
+  const settingDialogVisible = ref(false)
+  const copyDialogVisible = ref(false)
+  const exportDialogVisible = ref(false)
+  const toolDialogVisible = ref(false)
+
+  const projectCreateForm = reactive({
+    name: '',
+    description: '',
+    path: '',
+    condaName: '',
+    enableDatabase: false,
+    databaseName: '',
+    databaseHost: '',
+    databasePort: '',
+    databaseUser: '',
+    databasePassword: '',
+    dbChecked: false,
+    enableNginx: false,
+    nginxChecked: false,
+    nginxChecking: false,
+    nginxServerIp: '',
+    nginxConfPath: '',
+    nginxConfigText: '',
+    nginxConfOptions: [],
+    nginxNewConfDirs: [],
+    nginxExistingConfPath: '',
+    nginxNewConfBaseDir: '',
+    nginxNewConfDirPath: '',
+    nginxNewConfDirCascaderValue: [],
+    nginxNewConfFileName: '',
+    nginxFrontendPort: '',
+    nginxBackendPort: '',
+    nginxFrontendPortChecked: false,
+    nginxBackendPortChecked: false,
+    nginxPreviewVisible: false,
+    nginxPreviewText: '',
+    nginxPreviewDraft: '',
+    nginxPreviewConfirmed: false,
+    pythonVersion: '',
+    serverIp: '',
+  })
+
+  const createUserForm = reactive({
+    username: '',
+    password: '',
+  })
+
+  const envCreateForm = reactive({
+    name: 'demo_api',
+    pythonVersion: '3.11',
+    description: '用于快速创建，来源于历史项目',
+  })
+
+  const serverCreateForm = reactive({
+    ip: '',
+    rootPassword: '',
+    remark: '新服务器',
+  })
+
+  const settingForm = reactive({
+    projectId: 0,
+    projectName: '',
+    description: '',
+    descriptionModifyEnabled: false,
+    condaEnvName: '',
+    condaModifyEnabled: false,
+    pythonVersion: '',
+    createCondaEnv: false,
+    dropOriginalCondaEnv: false,
+    backendPath: '',
+    entryFilePath: '',
+    entryFilePathModifyEnabled: false,
+    entryFilePathCascaderValue: [],
+    backendDevPort: '',
+    backendDeployPort: '',
+    frontendPort: '',
+    nginxEnabled: false,
+    nginxModifyEnabled: false,
+    nginxServerIp: '',
+    nginxConfPath: '',
+    nginxConfigText: '',
+    nginxConfOptions: [],
+    nginxNewConfDirs: [],
+    nginxExistingConfPath: '',
+    nginxNewConfBaseDir: '',
+    nginxNewConfDirPath: '',
+    nginxNewConfDirCascaderValue: [],
+    nginxNewConfFileName: '',
+    nginxChecked: false,
+    nginxChecking: false,
+    nginxFrontendPortChecked: false,
+    nginxBackendPortChecked: false,
+    nginxPreviewVisible: false,
+    nginxPreviewText: '',
+    nginxPreviewDraft: '',
+    nginxPreviewConfirmed: false,
+    frontendPath: '',
+    currentUsername: '',
+    currentRole: '',
+    devCommand: '',
+    devCommandModifyEnabled: false,
+    deployCommand: '',
+    deployCommandModifyEnabled: false,
+    serverIp: '',
+    serverIpOptions: [],
+    databaseName: '',
+    databaseModifyEnabled: false,
+    databaseHost: '',
+    databasePort: DEFAULT_DB_PORT,
+    databaseUser: DEFAULT_DB_USER,
+    databasePassword: DEFAULT_DB_PASSWORD,
+    remark: '配置后会覆盖 Nginx 端口信息',
+  })
+
+  const copyForm = reactive({
+    projectName: '',
+    targetServerIp: '',
+    targetDir: appConfig.defaultCopyDir,
+  })
+
+  const exportForm = reactive({
+    projectName: '',
+    targetDir: appConfig.defaultExportDir,
+  })
+
+  const toolForm = reactive({
+    projectId: 0,
+    projectName: '',
+  })
+
+  const deleteUserDialogVisible = ref(false)
+  const deleteUserTarget = ref(null)
+  const deleteUserMigrate = ref('yes')
+
+  const {
+    serverAddUserDialogVisible,
+    serverDeleteUserDialogVisible,
+    serverAddUserForm,
+    serverDeleteUserForm,
+    serverAddUserDialogFieldsForView,
+    serverDeleteUserDialogFieldsForView,
+    serverUserDialogWidth,
+    serverDeleteDangerText,
+    handleServerAction,
+    confirmAddServerUser,
+    confirmDeleteServerUser,
+  } = useServerUserDialog({
+    projectStore,
+    activeSessionAlias,
+    appendTerminal,
+  })
+
+
+  const {
+    projectCreateDialogFieldsForView,
+    openCreateProjectDialog,
+    checkProjectNameOnBlur,
+    confirmCreateProjectReal,
+    onCreateProjectDatabaseCheck,
+    onCreateProjectNginxCheck,
+    onCreateProjectNginxPortBlur,
+  } = useCreateProjectDialog({
+    projectCreateForm,
+    projectStore,
+    projectDialogVisible,
+    ensureCreateProjectSession,
+    ensureProjectTaskSession,
+    appendSessionLine,
+    appendSessionLines,
+    lockSession,
+    unlockSession,
+  })
+
+  const userDeleteConfirmText = computed(() => {
+    return fillDeleteText(userDeleteConfirmTextTemplate.value, deleteUserTarget.value ? deleteUserTarget.value.username : '')
+  })
+
+  const notify = (msg) => {
+    ElMessage.success(msg)
+  }
+
+  const openCreateDialog = () => {
+    if (layout.activeMenu === 'projects') {
+      openCreateProjectDialog()
+      return
+    }
+    if (layout.activeMenu === 'users') {
+      createUserForm.username = ''
+      createUserForm.password = ''
+      userDialogVisible.value = true
+      return
+    }
+    if (layout.activeMenu === 'envs') {
+      envDialogVisible.value = true
+      return
+    }
+    serverDialogVisible.value = true
+  }
+
+  const confirmCreate = async (entity) => {
+    if (entity === 'project') {
+      await confirmCreateProjectReal()
+      return
+    }
+    projectDialogVisible.value = false
+    envDialogVisible.value = false
+    const entityLabel = entity === 'env' ? '环境' : String(entity || '')
+    ElMessage.success(`${entityLabel}创建成功（原型）`)
+  }
+
+  const confirmCreateServer = async () => {
+    const ip = String(serverCreateForm.ip || '').trim()
+    const rootPassword = String(serverCreateForm.rootPassword || '').trim()
+    const remark = String(serverCreateForm.remark || '').trim()
+
+    if (!ip) {
+      ElMessage.warning('服务器IP不能为空')
+      return
+    }
+
+    try {
+      await projectApi.createServer({
+        ip,
+        root_password: rootPassword,
+        remark,
+      })
+      serverDialogVisible.value = false
+      ElMessage.success('创建服务器成功')
+      await projectStore.loadBundle()
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '创建服务器失败'))
+    }
+  }
+
+  const confirmCreateUser = async () => {
+    const username = createUserForm.username.trim()
+    const password = createUserForm.password.trim()
+    if (!username) {
+      ElMessage.warning('请输入账号')
+      return
+    }
+    if (!password) {
+      ElMessage.warning('请输入密码')
+      return
+    }
+
+    try {
+      await projectApi.createUser({ username, password, role: 'user' })
+      userDialogVisible.value = false
+      ElMessage.success('创建成功')
+      await projectStore.loadBundle()
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '创建失败'))
+    }
+  }
+
+  const openProjectDetail = async (project) => {
+    selectedProject.value = project
+    selectedProjectDetail.value = null
+    projectDrawerVisible.value = true
+    projectDetailLoading.value = true
+    try {
+      const resp = await projectApi.getProjectDetail(project.id)
+      selectedProjectDetail.value = resp.data?.data || null
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '加载项目详情失败'))
+    } finally {
+      projectDetailLoading.value = false
+    }
+  }
+
+  const openProjectLogDialog = async (project) => {
+    selectedProject.value = project
+    projectLogData.value = { project_id: project.id, project_name: project.name, total: 0, data: [] }
+    projectLogDialogVisible.value = true
+    projectLogLoading.value = true
+    try {
+      const resp = await projectApi.listProjectLogs(project.id)
+      projectLogData.value = resp.data?.data || projectLogData.value
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '加载项目日志失败'))
+    } finally {
+      projectLogLoading.value = false
+    }
+  }
+
+  const openSettingDialog = (project) => {
+    fillProjectSettingForm({ settingForm, project, projectStore })
+    settingDialogVisible.value = true
+  }
+
+  const buildSettingTerminalPlan = (payload) => {
+    const steps = []
+    if (settingForm.descriptionModifyEnabled) {
+      steps.push(`更新项目描述：${payload.description || '空'}`)
+    }
+    if (settingForm.condaModifyEnabled) {
+      const condaAction = payload.create_conda_env
+        ? `创建并切换Conda环境：${payload.conda_env_name} (python=${payload.python_version || '未指定'})`
+        : `切换Conda环境：${payload.conda_env_name || '空'}`
+      steps.push(condaAction)
+      if (payload.drop_original_conda_env) {
+        steps.push('删除原Conda环境：已选择不保留')
+      }
+    }
+    if (String(payload.entry_file_path || '').trim()) {
+      steps.push(`保存项目入口文件：${payload.entry_file_path}`)
+    }
+    if (String(payload.dev_start_command || '').trim()) {
+      steps.push(`保存开发启动命令：${payload.dev_start_command}`)
+    }
+    if (String(payload.deploy_start_command || '').trim()) {
+      steps.push(`保存部署启动命令：${payload.deploy_start_command}`)
+    }
+    if (payload.nginx_enabled) {
+      steps.push(`保存Nginx配置：${payload.nginx_conf_path || '未选择配置文件'}`)
+      if (payload.nginx_server_ip) steps.push(`Nginx服务器IP：${payload.nginx_server_ip}`)
+      if (payload.frontend_port) steps.push(`使用Nginx前端端口：${payload.frontend_port}`)
+      if (payload.backend_deploy_port) steps.push(`使用后端部署端口：${payload.backend_deploy_port}`)
+      if (payload.drop_original_nginx_config) {
+        steps.push('删除原Nginx配置：已选择不保留')
+      }
+    } else {
+      steps.push('Nginx配置：不启用')
+    }
+    if (String(payload.database_name || '').trim()) {
+      steps.push(`保存数据库配置：${payload.database_name}`)
+      steps.push(`数据库地址：${payload.database_host}:${payload.database_port}`)
+      if (payload.drop_original_database) {
+        steps.push('删除原数据库：已选择不保留')
+      }
+    } else {
+      steps.push('数据库配置：不启用')
+    }
+    return steps
+  }
+
+  const appendSettingStep = async (sessionId, line, delay = 100) => {
+    if (!sessionId) return
+    appendSessionLine(sessionId, line)
+    if (delay > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, delay))
+    }
+  }
+
+  const saveProjectSetting = async () => {
+    if (!settingForm.projectId) return
+    if (!String(settingForm.entryFilePath || '').trim()) {
+      ElMessage.warning('请先选择项目入口文件位置')
+      return
+    }
+
+    const projectId = Number(settingForm.projectId)
+    const payload = buildProjectSettingPayload(settingForm)
+    const serverIp = String(settingForm.serverIp || activeSessionIp.value || '').trim()
+    let sessionInfo = null
+
+    projectStore.setProjectBusy(projectId, true)
+    settingDialogVisible.value = false
+
+    try {
+      if (typeof ensureProjectTaskSession === 'function' && serverIp) {
+        sessionInfo = await ensureProjectTaskSession(serverIp, 'setting')
+        lockSession(sessionInfo.localSessionId, `保存项目设置 ${settingForm.projectName} 中，请稍候`)
+        await appendSettingStep(sessionInfo.localSessionId, `1.连接目标服务器：${serverIp}   ---> 已完成`)
+        await appendSettingStep(sessionInfo.localSessionId, '')
+        await appendSettingStep(sessionInfo.localSessionId, `2.开始保存项目设置：${settingForm.projectName} ---> 进行中`)
+        const plan = buildSettingTerminalPlan(payload)
+        if (typeof appendSessionLines === 'function') {
+          appendSessionLines(sessionInfo.localSessionId, plan.map((item) => `  ${item}`))
+        } else {
+          for (const item of plan) {
+            await appendSettingStep(sessionInfo.localSessionId, `  ${item}`, 0)
+          }
+        }
+        await appendSettingStep(sessionInfo.localSessionId, '  后端正在按配置差异执行实际变更，请稍候...', 0)
+      }
+
+      const resp = await projectApi.updateProjectSetting(projectId, payload)
+      projectStore.updateProjectSetting(
+        projectId,
+        buildProjectSettingStorePatch(settingForm),
+      )
+      const msg = String(resp.data?.message || '设置保存成功')
+      if (sessionInfo?.localSessionId) {
+        await appendSettingStep(sessionInfo.localSessionId, `2.开始保存项目设置：${settingForm.projectName} ---> 已完成`)
+        await appendSettingStep(sessionInfo.localSessionId, '')
+        await appendSettingStep(sessionInfo.localSessionId, '3.刷新项目列表 ---> 进行中')
+      }
+      ElMessage.success(msg)
+      await projectStore.loadBundle()
+      if (sessionInfo?.localSessionId) {
+        await appendSettingStep(sessionInfo.localSessionId, '3.刷新项目列表 ---> 已完成')
+        await appendSettingStep(sessionInfo.localSessionId, '')
+        await appendSettingStep(sessionInfo.localSessionId, '4.项目设置保存成功', 0)
+      }
+    } catch (error) {
+      const msg = getErrorMessage(error, '设置保存失败')
+      if (sessionInfo?.localSessionId) {
+        appendSessionLine(sessionInfo.localSessionId, `设置失败：${msg}`)
+      } else {
+        appendTerminal(`[会话:${activeSessionAlias.value}] ${settingForm.projectName} 设置失败：${msg}`)
+      }
+      ElMessage.error(msg)
+      await projectStore.loadBundle()
+    } finally {
+      projectStore.setProjectBusy(projectId, false)
+      if (sessionInfo?.localSessionId) {
+        unlockSession(sessionInfo.localSessionId)
+      }
+    }
+  }
+
+  const openCopyDialog = (project) => {
+    copyForm.projectName = project.name
+    copyForm.targetServerIp = activeSessionIp.value || project.serverIp
+    copyForm.targetDir = appConfig.defaultCopyDir
+    copyDialogVisible.value = true
+  }
+
+  const confirmCopyProject = async () => {
+    const project = projectStore.projects.find((x) => x.name === copyForm.projectName)
+    if (!project) return
+    try {
+      await projectApi.copyProject(project.id, {
+        target_server_ip: copyForm.targetServerIp,
+        target_dir: copyForm.targetDir,
+      })
+      copyDialogVisible.value = false
+      ElMessage.success('复制项目成功')
+      appendTerminal(
+        `[会话:${activeSessionAlias.value}] 复制 ${copyForm.projectName} 到 ${copyForm.targetServerIp}:${copyForm.targetDir}`,
+      )
+      await projectStore.loadBundle()
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '复制失败'))
+    }
+  }
+
+  const openExportDialog = (project) => {
+    exportForm.projectName = project.name
+    exportForm.targetDir = appConfig.defaultExportDir
+    exportDialogVisible.value = true
+  }
+
+  const confirmExportProject = async () => {
+    const project = projectStore.projects.find((x) => x.name === exportForm.projectName)
+    if (!project) return
+    try {
+      await projectApi.exportProject(project.id, {
+        target_dir: exportForm.targetDir,
+      })
+      exportDialogVisible.value = false
+      ElMessage.success('导出项目成功')
+      appendTerminal(
+        `[会话:${activeSessionAlias.value}] 导出 ${exportForm.projectName} 到本机目录 ${exportForm.targetDir}`,
+      )
+      await projectStore.loadBundle()
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '导出失败'))
+    }
+  }
+
+  const findToolProject = () => {
+    const list = projectStore.projects || []
+    return list.find((item) => Number(item.id) === Number(toolForm.projectId)) || list.find((item) => item.name === toolForm.projectName)
+  }
+
+  const openToolDialog = (project) => {
+    toolForm.projectId = project.id
+    toolForm.projectName = project.name
+    toolDialogVisible.value = true
+  }
+
+  const handleProjectToolClick = (button) => {
+    const label = typeof button === 'string' ? button : button?.label
+    const project = findToolProject()
+    if (!project) {
+      ElMessage.warning('未找到当前项目')
+      return
+    }
+    if (label === '复制项目') {
+      toolDialogVisible.value = false
+      openCopyDialog(project)
+      return
+    }
+    if (label === '导出项目') {
+      toolDialogVisible.value = false
+      openExportDialog(project)
+      return
+    }
+    ElMessage.info('该工具暂未开发')
+  }
+
+  const openDeleteUserDialog = (userRow) => {
+    deleteUserTarget.value = userRow
+    deleteUserMigrate.value = 'yes'
+    deleteUserDialogVisible.value = true
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUserTarget.value) return
+    const username = deleteUserTarget.value.username
+    try {
+      await projectApi.deleteUser([deleteUserTarget.value.id], deleteUserMigrate.value === 'yes')
+      projectStore.removeUser(deleteUserTarget.value.id)
+      deleteUserDialogVisible.value = false
+      if (deleteUserMigrate.value === 'yes') {
+        ElMessage.success(`已删除 ${username}，项目已迁移`)
+        appendTerminal(`[会话:${activeSessionAlias.value}] 删除 ${username}，项目已迁移到 root 目录`)
+      } else {
+        ElMessage.success(fillDeleteText(userDeleteSuccessTextTemplate.value, username))
+        appendTerminal(`[会话:${activeSessionAlias.value}] 删除 ${username}，未迁移项目`)
+      }
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '删除用户失败'))
+    }
+  }
+
+  const handleUserAction = (actionCode, userRow) => {
+    if (actionCode === 'delete') {
+      openDeleteUserDialog(userRow)
+    }
+  }
+
+  const handleEnvAction = (actionCode) => {
+    if (actionCode === 'view') {
+      notify('查看环境主包与版本')
+      return
+    }
+    notify('环境操作已触发')
+  }
+
+  const { deleteProject } = useProjectDeleteDialog({
+    projectStore,
+    selectedProject,
+    selectedProjectDetail,
+    projectDetailLoading,
+    projectDrawerVisible,
+    projectLogDialogVisible,
+    projectLogLoading,
+    projectLogData,
+    activeSessionAlias,
+    appendTerminal,
+    projectDeleteSuccessTextTemplate,
+  })
+
+  const checkProjectHealth = async (project) => {
+    if (!project?.id) return
+    if (projectStore.isProjectHealthChecking(project.id)) return
+    projectStore.setProjectHealthChecking(project.id, true)
+    try {
+      const resp = await projectApi.checkProjectHealth(project.id)
+      const data = resp.data?.data || {}
+      projectStore.updateProjectHealth(project.id, data)
+      const statusText = data.project_status || data.projectStatus || '检测完成'
+      ElMessage.success(`项目状态检测完成：${statusText}`)
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '项目状态检测失败'))
+    } finally {
+      projectStore.setProjectHealthChecking(project.id, false)
+    }
+  }
+
+
+  const checkProjectService = async (project) => {
+    if (!project?.id) return
+    if (projectStore.isProjectServiceChecking(project.id)) return
+    projectStore.setProjectServiceChecking(project.id, true)
+    try {
+      const resp = await projectApi.checkProjectHealth(project.id)
+      const data = resp.data?.data || {}
+      projectStore.updateProjectServiceStatus(project.id, data)
+      const statusText = data.service_status || data.serviceStatus || data.status || '已停止'
+      const runningPort = data.running_port || data.runningPort || ''
+      if (String(statusText).trim() === '运行中' && runningPort) {
+        ElMessage.success(`服务状态检测完成：运行中，端口 ${runningPort}`)
+      } else {
+        ElMessage.success(`服务状态检测完成：${statusText}`)
+      }
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '服务状态检测失败'))
+    } finally {
+      projectStore.setProjectServiceChecking(project.id, false)
+    }
+  }
+
+  const handleProjectAction = async (actionCode, project) => {
+    if (!canAction('projects', actionCode)) return
+    const projectStatus = String(project?.status || '').trim()
+    if (projectStore.isProjectBusy(project?.id) || [PROJECT_CREATING_TEXT, PROJECT_SETTING_TEXT].includes(projectStatus)) {
+      ElMessage.warning('项目任务正在执行中，请等待后端实际返回后再操作')
+      return
+    }
+
+
+    if (actionCode === 'start_fg') {
+      if (project.status === PROJECT_RUNNING_TEXT) {
+        ElMessage.warning('项目已在运行中')
+        return
+      }
+      try {
+        const resp = await projectApi.startForeground(project.id)
+        const msg = String(resp.data?.message || '前台启动成功')
+        projectStore.setProjectStatus(project.id, PROJECT_RUNNING_TEXT)
+        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
+        ElMessage.success(msg)
+        await projectStore.loadBundle()
+      } catch (error) {
+        ElMessage.error(getErrorMessage(error, '前台启动失败'))
+      }
+      return
+    }
+
+    if (actionCode === 'start_bg') {
+      if (project.status === PROJECT_RUNNING_TEXT) {
+        ElMessage.warning('项目已在运行中')
+        return
+      }
+      try {
+        const resp = await projectApi.startBackground(project.id)
+        const msg = String(resp.data?.message || '后台启动成功')
+        projectStore.setProjectStatus(project.id, PROJECT_RUNNING_TEXT)
+        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
+        ElMessage.success(msg)
+        await projectStore.loadBundle()
+      } catch (error) {
+        ElMessage.error(getErrorMessage(error, '后台启动失败'))
+      }
+      return
+    }
+
+    if (actionCode === 'deploy_start') {
+      try {
+        const resp = await projectApi.deployStart(project.id)
+        const msg = String(resp.data?.message || '部署启动成功')
+        projectStore.setProjectStatus(project.id, PROJECT_RUNNING_TEXT)
+        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
+        ElMessage.success(msg)
+        await projectStore.loadBundle()
+      } catch (error) {
+        ElMessage.error(getErrorMessage(error, '部署启动失败'))
+      }
+      return
+    }
+
+    if (actionCode === 'stop') {
+      if (project.status === PROJECT_STOPPED_TEXT) {
+        ElMessage.warning('项目已停止')
+        return
+      }
+      try {
+        const resp = await projectApi.stopProject(project.id)
+        const msg = String(resp.data?.message || '停止服务成功')
+        projectStore.setProjectStatus(project.id, PROJECT_STOPPED_TEXT)
+        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
+        ElMessage.success(msg)
+        await projectStore.loadBundle()
+      } catch (error) {
+        ElMessage.error(getErrorMessage(error, '停止服务失败'))
+      }
+      return
+    }
+
+    if (actionCode === 'setting') {
+      openSettingDialog(project)
+      return
+    }
+
+    if (actionCode === 'detail') {
+      openProjectDetail(project)
+      return
+    }
+
+    if (actionCode === 'log') {
+      await openProjectLogDialog(project)
+      return
+    }
+
+    if (actionCode === 'copy') {
+      openCopyDialog(project)
+      return
+    }
+
+    if (actionCode === 'export') {
+      openExportDialog(project)
+      return
+    }
+
+    if (actionCode === 'tools') {
+      openToolDialog(project)
+      return
+    }
+
+    if (actionCode === 'delete') {
+      await deleteProject(project)
+    }
+  }
+
+  return {
+    selectedProject,
+    selectedProjectDetail,
+    projectDetailLoading,
+    projectDrawerVisible,
+    projectLogDialogVisible,
+    projectLogLoading,
+    projectLogData,
+    projectDialogVisible,
+    userDialogVisible,
+    envDialogVisible,
+    serverDialogVisible,
+    settingDialogVisible,
+    copyDialogVisible,
+    exportDialogVisible,
+    toolDialogVisible,
+    projectCreateForm,
+    createUserForm,
+    envCreateForm,
+    serverCreateForm,
+    settingForm,
+    copyForm,
+    exportForm,
+    toolForm,
+    deleteUserDialogVisible,
+    deleteUserTarget,
+    deleteUserMigrate,
+    userDeleteConfirmText,
+    openCreateDialog,
+    confirmCreate,
+    onCreateProjectDatabaseCheck,
+    onCreateProjectNginxCheck,
+    onCreateProjectNginxPortBlur,
+    checkProjectNameOnBlur,
+    confirmCreateServer,
+    confirmCreateUser,
+    saveProjectSetting,
+    confirmCopyProject,
+    confirmExportProject,
+    handleProjectToolClick,
+    confirmDeleteUser,
+    handleUserAction,
+    handleEnvAction,
+    handleServerAction,
+    handleProjectAction,
+    checkProjectHealth,
+    checkProjectService,
+    serverAddUserDialogVisible,
+    serverDeleteUserDialogVisible,
+    serverAddUserForm,
+    serverDeleteUserForm,
+    projectCreateDialogFieldsForView,
+    serverAddUserDialogFieldsForView,
+    serverDeleteUserDialogFieldsForView,
+    serverUserDialogWidth,
+    serverDeleteDangerText,
+    confirmAddServerUser,
+    confirmDeleteServerUser,
+  }
+}
