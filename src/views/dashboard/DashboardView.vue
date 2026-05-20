@@ -38,6 +38,7 @@
         @member-filter-change="layout.setMemberFilter"
         @status-filter-toggle="toggleStatusFilter"
         @create="openCreateDialog"
+        @sync-project="openSyncProjectDialog"
         @project-action="onProjectTableActionFromTable"
         @project-health-check="checkProjectHealth"
         @project-service-check="checkProjectService"
@@ -130,9 +131,14 @@
     :project-log-dialog-visible="projectLogDialogVisible"
     :project-log-loading="projectLogLoading"
     :project-log-data="projectLogData"
+    :sync-project-dialog-visible="syncProjectDialogVisible"
+    :sync-project-dialog-width="syncProjectDialogWidth"
+    :sync-project-form="syncProjectForm"
+    :sync-project-fields-for-view="syncProjectFieldsForView"
     @update:project-drawer-visible="projectDrawerVisible = $event"
     @update:project-log-dialog-visible="projectLogDialogVisible = $event"
     @update:project-dialog-visible="projectDialogVisible = $event"
+    @update:sync-project-dialog-visible="syncProjectDialogVisible = $event"
     @update:setting-dialog-visible="settingDialogVisible = $event"
     @update:copy-dialog-visible="copyDialogVisible = $event"
     @update:export-dialog-visible="exportDialogVisible = $event"
@@ -146,6 +152,14 @@
     @update:server-add-user-dialog-visible="serverAddUserDialogVisible = $event"
     @update:server-delete-user-dialog-visible="serverDeleteUserDialogVisible = $event"
     @confirm-create-project="confirmCreate('project')"
+    @confirm-sync-project="confirmSyncProject"
+    @sync-project-server-change="onSyncProjectServerChange"
+    @sync-project-path-change="onSyncProjectPathChange"
+    @sync-project-entry-path-change="onSyncProjectEntryPathChange"
+    @sync-project-conda-check="onSyncProjectCondaCheck"
+    @sync-project-db-check="onSyncProjectDatabaseCheck"
+    @sync-project-nginx-check="onSyncProjectNginxCheck"
+    @sync-project-nginx-port-blur="onSyncProjectNginxPortBlur"
     @create-project-name-blur="checkProjectNameOnBlur"
     @create-project-db-check="onCreateProjectDatabaseCheck"
     @create-project-nginx-check="onCreateProjectNginxCheck"
@@ -290,6 +304,10 @@ const {
   projectLogDialogVisible,
   projectLogLoading,
   projectLogData,
+  syncProjectDialogVisible,
+  syncProjectDialogWidth,
+  syncProjectForm,
+  syncProjectFieldsForView,
   projectDialogVisible,
   userDialogVisible,
   envDialogVisible,
@@ -310,7 +328,16 @@ const {
   deleteUserMigrate,
   userDeleteConfirmText,
   openCreateDialog,
+  openSyncProjectDialog,
   confirmCreate,
+  confirmSyncProject,
+  onSyncProjectServerChange,
+  onSyncProjectPathChange,
+  onSyncProjectEntryPathChange,
+  onSyncProjectCondaCheck,
+  onSyncProjectDatabaseCheck,
+  onSyncProjectNginxCheck,
+  onSyncProjectNginxPortBlur,
   onCreateProjectDatabaseCheck,
   onCreateProjectNginxCheck,
   onCreateProjectNginxPortBlur,

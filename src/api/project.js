@@ -94,6 +94,65 @@ export const projectApi = {
       nginx_server_ip: payload.nginx_server_ip || '',
     })
   },
+  listSyncProjectPathChildren(payload) {
+    return request.post('/pspm/projects/sync/path-children', {
+      server_ip: payload.server_ip || '',
+      rel_path: payload.rel_path || '',
+    })
+  },
+  listSyncEntryPathChildren(payload) {
+    return request.post('/pspm/projects/sync/entry-path-children', {
+      server_ip: payload.server_ip || '',
+      backend_path: payload.backend_path || '',
+      rel_path: payload.rel_path || '',
+    })
+  },
+  listSyncCondaEnvs(payload) {
+    return request.post('/pspm/projects/sync/conda-envs', {
+      server_ip: payload.server_ip || '',
+    })
+  },
+  checkSyncConda(payload) {
+    return request.post('/pspm/projects/sync/check-conda', {
+      server_ip: payload.server_ip || '',
+      conda_env_name: payload.conda_env_name || '',
+    })
+  },
+  checkSyncDatabase(payload) {
+    return request.post('/pspm/projects/sync/check-database', {
+      host: payload.host,
+      port: Number(payload.port),
+      username: payload.username,
+      password: payload.password || '',
+      database_name: payload.database_name || '',
+    })
+  },
+  checkSyncNginxServerBlock(payload) {
+    return request.post('/pspm/projects/sync/check-nginx-server-block', {
+      server_ip: payload.server_ip || '',
+      nginx_server_ip: payload.nginx_server_ip || '',
+      nginx_conf_path: payload.nginx_conf_path || '',
+      frontend_port: payload.frontend_port || '',
+      backend_deploy_port: payload.backend_deploy_port || '',
+    })
+  },
+  syncExistingProject(payload) {
+    return request.post('/pspm/projects/sync', {
+      ...payload,
+      use_database: !!payload.use_database,
+      database_name: payload.use_database ? (payload.database_name || '') : '',
+      database_host: payload.use_database ? (payload.database_host || '') : '',
+      database_port: payload.use_database ? payload.database_port : null,
+      database_user: payload.use_database ? (payload.database_user || '') : '',
+      database_password: payload.use_database ? (payload.database_password || '') : '',
+      use_nginx: !!payload.use_nginx,
+      nginx_server_ip: payload.use_nginx ? (payload.nginx_server_ip || '') : '',
+      nginx_conf_path: payload.use_nginx ? (payload.nginx_conf_path || '') : '',
+      frontend_port: payload.use_nginx ? (payload.frontend_port || '') : '',
+      backend_deploy_port: payload.use_nginx ? (payload.backend_deploy_port || '') : '',
+      nginx_config_text: payload.use_nginx ? (payload.nginx_config_text || '') : '',
+    }, { timeout: 0 })
+  },
   deleteUser(ids, transferProjects = true) {
     return request.delete('/pspm/users/delete', {
       params: { id: ids, transfer_projects: transferProjects },

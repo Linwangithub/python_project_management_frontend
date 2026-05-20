@@ -30,6 +30,22 @@
     @nginx-port-blur="emit('create-project-nginx-port-blur', $event)"
   />
 
+  <SyncProjectDialog
+    :model-value="syncProjectDialogVisible"
+    :width="syncProjectDialogWidth"
+    :fields="syncProjectFieldsForView"
+    :form="syncProjectForm"
+    @update:model-value="emit('update:syncProjectDialogVisible', $event)"
+    @confirm="emit('confirmSyncProject')"
+    @server-change="emit('syncProjectServerChange')"
+    @path-change="emit('syncProjectPathChange', $event)"
+    @entry-path-change="emit('syncProjectEntryPathChange', $event)"
+    @conda-check="emit('syncProjectCondaCheck')"
+    @database-check="emit('syncProjectDbCheck')"
+    @nginx-check="emit('syncProjectNginxCheck')"
+    @nginx-port-blur="emit('syncProjectNginxPortBlur', $event)"
+  />
+
   <ProjectSettingDialog
     :model-value="settingDialogVisible"
     :width="settingDialogWidth"
@@ -139,6 +155,7 @@
 import ProjectDetailDrawer from '@/components/dialogs/ProjectDetailDrawer.vue'
 import ProjectLogDialog from '@/components/dialogs/ProjectLogDialog.vue'
 import CreateProjectDialog from '@/components/dialogs/CreateProjectDialog.vue'
+import SyncProjectDialog from '@/components/dialogs/SyncProjectDialog.vue'
 import ProjectSettingDialog from '@/components/dialogs/ProjectSettingDialog.vue'
 import CopyProjectDialog from '@/components/dialogs/CopyProjectDialog.vue'
 import ExportProjectDialog from '@/components/dialogs/ExportProjectDialog.vue'
@@ -165,6 +182,10 @@ defineProps([
   'projectCreateDialogWidth',
   'createProjectDialogFieldsForView',
   'projectCreateForm',
+  'syncProjectDialogVisible',
+  'syncProjectDialogWidth',
+  'syncProjectForm',
+  'syncProjectFieldsForView',
   'settingDialogVisible',
   'settingDialogWidth',
   'settingDialogFieldsForView',
@@ -216,6 +237,7 @@ const emit = defineEmits([
   'update:projectDrawerVisible',
   'update:projectLogDialogVisible',
   'update:projectDialogVisible',
+  'update:syncProjectDialogVisible',
   'update:settingDialogVisible',
   'update:copyDialogVisible',
   'update:exportDialogVisible',
@@ -229,6 +251,14 @@ const emit = defineEmits([
   'update:serverAddUserDialogVisible',
   'update:serverDeleteUserDialogVisible',
   'confirmCreateProject',
+  'confirmSyncProject',
+  'syncProjectServerChange',
+  'syncProjectPathChange',
+  'syncProjectEntryPathChange',
+  'syncProjectCondaCheck',
+  'syncProjectDbCheck',
+  'syncProjectNginxCheck',
+  'syncProjectNginxPortBlur',
   'create-project-name-blur',
   'create-project-db-check',
   'create-project-nginx-check',

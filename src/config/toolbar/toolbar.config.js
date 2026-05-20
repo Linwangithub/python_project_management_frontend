@@ -19,4 +19,9 @@
     menus: ['projects', 'users', 'envs', 'servers'],
     order: 3,
   },
+  {
+    type: 'sync-project-button',
+    menus: ['projects'],
+    order: 4,
+  },
 ]

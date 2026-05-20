@@ -1,5 +1,5 @@
 export const PROJECT_CREATING_TEXT = '创建中'
-export const PROJECT_SETTING_TEXT = '\u8bbe\u7f6e\u4e2d'
+export const PROJECT_SETTING_TEXT = '设置中'
 export const PROJECT_CREATED_TEXT = '创建成功'
 export const PROJECT_CREATE_FAILED_TEXT = '创建失败'
 export const PROJECT_RUNNING_TEXT = '运行中'
@@ -20,4 +20,3 @@ export const DB_PORT_MIN = 1
 export const DB_PORT_MAX = 65535
 export const PORT_MIN = 1024
 export const PORT_MAX = 49151
-

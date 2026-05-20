@@ -35,6 +35,7 @@
         </div>
 
         <el-button v-else-if="section.type === 'create-button'" size="small" type="primary" @click="emit('create')">+ 新建</el-button>
+        <el-button v-else-if="section.type === 'sync-project-button'" size="small" type="success" plain @click="emit('sync-project')">同步</el-button>
       </template>
     </div>
 
@@ -148,6 +149,7 @@ const emit = defineEmits([
   'member-filter-change',
   'status-filter-toggle',
   'create',
+  'sync-project',
   'project-action',
   'project-health-check',
   'project-service-check',

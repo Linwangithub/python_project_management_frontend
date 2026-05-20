@@ -14,7 +14,7 @@ export const viewPresetsConfig = [
   {
     key: 'full',
     label: '完整视图',
-    toolbarSections: ['member-filter', 'status-filter', 'create-button'],
+    toolbarSections: ['member-filter', 'status-filter', 'create-button', 'sync-project-button'],
     menus: {
       projects: {
         menuLabel: '项目管理',
@@ -110,7 +110,7 @@ export const viewPresetsConfig = [
   {
     key: 'compact',
     label: '紧凑视图',
-    toolbarSections: ['member-filter', 'create-button'],
+    toolbarSections: ['member-filter', 'create-button', 'sync-project-button'],
     menus: {
       projects: {
         menuLabel: '项目管理',

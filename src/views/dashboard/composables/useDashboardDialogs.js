@@ -16,6 +16,7 @@ import {
   fillDeleteText,
 } from './dialogUtils'
 import { useCreateProjectDialog } from './project-create/useCreateProjectDialog'
+import { useSyncProjectDialog } from './project-sync/useSyncProjectDialog'
 import { useServerUserDialog } from './server-user/useServerUserDialog'
 import { useProjectDeleteDialog } from './project-delete/useProjectDeleteDialog'
 import {
@@ -52,6 +53,7 @@ export const useDashboardDialogs = (options) => {
   const projectLogData = ref({ project_id: 0, project_name: '', total: 0, data: [] })
 
   const projectDialogVisible = ref(false)
+  const syncProjectDialogVisible = ref(false)
   const userDialogVisible = ref(false)
   const envDialogVisible = ref(false)
   const serverDialogVisible = ref(false)
@@ -95,6 +97,52 @@ export const useDashboardDialogs = (options) => {
     nginxPreviewConfirmed: false,
     pythonVersion: '',
     serverIp: '',
+  })
+
+  const syncProjectForm = reactive({
+    serverIp: '',
+    basePath: '',
+    projectPathOptions: [],
+    projectPathCascaderValue: [],
+    projectPathReady: false,
+    projectPathLoading: false,
+    projectRelPath: '',
+    backendPath: '',
+    entryPathOptions: [],
+    entryPathCascaderValue: [],
+    entryRelPath: '',
+    entryFilePath: '',
+    name: '',
+    description: '',
+    condaEnvName: '',
+    condaEnvOptions: [],
+    condaEnvPath: '',
+    pythonVersion: '',
+    condaChecked: false,
+    condaChecking: false,
+    condaLoading: false,
+    enableDatabase: false,
+    databaseName: '',
+    databaseOptions: [],
+    databaseHost: '',
+    databasePort: DEFAULT_DB_PORT,
+    databaseUser: DEFAULT_DB_USER,
+    databasePassword: DEFAULT_DB_PASSWORD,
+    dbChecked: false,
+    dbChecking: false,
+    dbMessage: '',
+    enableNginx: false,
+    nginxServerIp: '',
+    nginxChecked: false,
+    nginxChecking: false,
+    nginxConfOptions: [],
+    nginxExistingConfPath: '',
+    nginxConfPath: '',
+    nginxFrontendPort: '',
+    nginxBackendPort: '',
+    nginxFrontendPortChecked: false,
+    nginxBackendPortChecked: false,
+    syncing: false,
   })
 
   const createUserForm = reactive({
@@ -227,6 +275,25 @@ export const useDashboardDialogs = (options) => {
     lockSession,
     unlockSession,
   })
+
+  const {
+    syncProjectFieldsForView,
+    openSyncProjectDialog,
+    confirmSyncProject,
+    onSyncProjectServerChange,
+    onSyncProjectPathChange,
+    onSyncProjectEntryPathChange,
+    onSyncProjectCondaCheck,
+    onSyncProjectDatabaseCheck,
+    onSyncProjectNginxCheck,
+    onSyncProjectNginxPortBlur,
+  } = useSyncProjectDialog({
+    syncProjectForm,
+    syncProjectDialogVisible,
+    projectStore,
+  })
+
+  const syncProjectDialogWidth = computed(() => '920px')
 
   const userDeleteConfirmText = computed(() => {
     return fillDeleteText(userDeleteConfirmTextTemplate.value, deleteUserTarget.value ? deleteUserTarget.value.username : '')
@@ -763,6 +830,7 @@ export const useDashboardDialogs = (options) => {
     projectLogLoading,
     projectLogData,
     projectDialogVisible,
+    syncProjectDialogVisible,
     userDialogVisible,
     envDialogVisible,
     serverDialogVisible,
@@ -771,6 +839,7 @@ export const useDashboardDialogs = (options) => {
     exportDialogVisible,
     toolDialogVisible,
     projectCreateForm,
+    syncProjectForm,
     createUserForm,
     envCreateForm,
     serverCreateForm,
@@ -783,7 +852,16 @@ export const useDashboardDialogs = (options) => {
     deleteUserMigrate,
     userDeleteConfirmText,
     openCreateDialog,
+    openSyncProjectDialog,
     confirmCreate,
+    confirmSyncProject,
+    onSyncProjectServerChange,
+    onSyncProjectPathChange,
+    onSyncProjectEntryPathChange,
+    onSyncProjectCondaCheck,
+    onSyncProjectDatabaseCheck,
+    onSyncProjectNginxCheck,
+    onSyncProjectNginxPortBlur,
     onCreateProjectDatabaseCheck,
     onCreateProjectNginxCheck,
     onCreateProjectNginxPortBlur,
@@ -806,6 +884,8 @@ export const useDashboardDialogs = (options) => {
     serverAddUserForm,
     serverDeleteUserForm,
     projectCreateDialogFieldsForView,
+    syncProjectFieldsForView,
+    syncProjectDialogWidth,
     serverAddUserDialogFieldsForView,
     serverDeleteUserDialogFieldsForView,
     serverUserDialogWidth,
