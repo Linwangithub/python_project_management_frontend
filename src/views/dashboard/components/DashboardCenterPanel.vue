@@ -140,7 +140,7 @@ const isProjectActionDisabled = (action, row) => {
   const id = Number(row?.id || 0)
   const busyIds = Array.isArray(props.projectBusyIds) ? props.projectBusyIds.map((item) => Number(item)) : []
   if (id && busyIds.includes(id)) return true
-  return ['创建中', '设置中'].includes(String(row?.status || '').trim())
+  return ['创建中', '设置中', '同步中'].includes(String(row?.status || '').trim())
 }
 
 

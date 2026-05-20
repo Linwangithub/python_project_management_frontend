@@ -38,6 +38,17 @@ export const buildCascaderPathValues = (pathText) => {
   return values
 }
 
+export const toProjectRelativePath = (basePath, pathText) => {
+  const base = String(basePath || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  const raw = String(pathText || '').trim().replace(/\\/g, '/')
+  if (!raw) return ''
+  if (base && raw === base) return ''
+  if (base && raw.startsWith(`${base}/`)) {
+    return raw.slice(base.length + 1)
+  }
+  return raw.replace(/^\/+/, '')
+}
+
 export const getProjectDeleteScopeOptions = (project) => {
   const dbName = String(project?.databaseName ?? project?.database_name ?? '').trim()
   const nginxPath = String(project?.nginxPath ?? project?.nginx_conf_path ?? '').trim()
@@ -65,4 +76,3 @@ export const isPortInCreateRange = (value, min, max) => {
   const num = Number(text)
   return num >= min && num <= max
 }
-

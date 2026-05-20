@@ -45,14 +45,17 @@
               filterable
               style="width: 100%"
               @change="handleFieldChange(field)"
+              @clear="handleFieldChange(field)"
             >
               <el-option
                 v-for="opt in field.options || []"
                 :key="typeof opt === 'string' ? opt : opt.value"
-                :label="typeof opt === 'string' ? opt : opt.label"
+                :label="typeof opt === 'string' ? opt : (opt.selectedLabel || opt.label)"
                 :value="typeof opt === 'string' ? opt : opt.value"
                 :disabled="typeof opt !== 'string' && opt.disabled"
-              />
+              >
+                <span v-if="typeof opt !== 'string' && opt.optionLabel">{{ opt.optionLabel }}</span>
+              </el-option>
             </el-select>
 
             <el-select
@@ -185,6 +188,7 @@ const emit = defineEmits([
   'database-check',
   'nginx-check',
   'nginx-port-blur',
+  'nginx-frontend-port-change',
 ])
 
 const confirmDisabled = computed(() => {
@@ -226,6 +230,9 @@ const entryPathProps = {
 const handleFieldChange = (field) => {
   if (field.key === 'serverIp') {
     emit('server-change')
+  }
+  if (field.key === 'nginxFrontendPort') {
+    emit('nginx-frontend-port-change')
   }
 }
 
@@ -282,8 +289,13 @@ const handleEntryPathClear = () => {
 const handleExistingConfChange = (value) => {
   const form = props.form || {}
   form.nginxConfPath = String(value || '').trim()
+  form.nginxFrontendPort = ''
+  form.nginxBackendPort = ''
+  form.nginxSelectedServerBlock = ''
+  form.nginxServerPortOptions = []
   form.nginxFrontendPortChecked = false
   form.nginxBackendPortChecked = false
+  emit('nginx-frontend-port-change')
 }
 
 const handleButtonClick = (field) => {

@@ -1,4 +1,4 @@
-import { reactive, ref, computed } from 'vue'
+﻿import { reactive, ref, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { appConfig } from '@/config/app/app.config'
 import { projectApi } from '@/api/project'
@@ -9,6 +9,7 @@ import {
   DEFAULT_DB_USER,
   PROJECT_CREATING_TEXT,
   PROJECT_SETTING_TEXT,
+  PROJECT_SYNCING_TEXT,
   PROJECT_RUNNING_TEXT,
   PROJECT_STOPPED_TEXT,
 } from './dialogConstants'
@@ -138,6 +139,8 @@ export const useDashboardDialogs = (options) => {
     nginxConfOptions: [],
     nginxExistingConfPath: '',
     nginxConfPath: '',
+    nginxServerPortOptions: [],
+    nginxSelectedServerBlock: '',
     nginxFrontendPort: '',
     nginxBackendPort: '',
     nginxFrontendPortChecked: false,
@@ -287,6 +290,7 @@ export const useDashboardDialogs = (options) => {
     onSyncProjectDatabaseCheck,
     onSyncProjectNginxCheck,
     onSyncProjectNginxPortBlur,
+    onSyncProjectNginxFrontendPortChange,
   } = useSyncProjectDialog({
     syncProjectForm,
     syncProjectDialogVisible,
@@ -408,55 +412,77 @@ export const useDashboardDialogs = (options) => {
     }
   }
 
-  const openSettingDialog = (project) => {
-    fillProjectSettingForm({ settingForm, project, projectStore })
+  const mergeLatestProjectForSetting = (project) => {
+    const source = project || {}
+    const latest = (projectStore.projects || []).find((item) => Number(item.id) === Number(source.id)) || {}
+    const merged = { ...source, ...latest }
+    const keys = new Set([...Object.keys(source), ...Object.keys(latest)])
+    keys.forEach((key) => {
+      const latestValue = latest[key]
+      const sourceValue = source[key]
+      const latestHasValue = latestValue !== undefined && latestValue !== null && String(latestValue).trim() !== ''
+      const sourceHasValue = sourceValue !== undefined && sourceValue !== null && String(sourceValue).trim() !== ''
+      if (!latestHasValue && sourceHasValue) {
+        merged[key] = sourceValue
+      }
+    })
+    return merged
+  }
+
+  const openSettingDialog = async (project) => {
+    fillProjectSettingForm({ settingForm, project: mergeLatestProjectForSetting(project), projectStore })
+    await nextTick()
     settingDialogVisible.value = true
   }
 
+  const terminalValue = (value) => {
+    const text = String(value ?? '').trim()
+    return text || '空字符'
+  }
+
+  const settingModifyText = (enabled) => (enabled ? '已开启修改' : '未修改')
+
   const buildSettingTerminalPlan = (payload) => {
     const steps = []
-    if (settingForm.descriptionModifyEnabled) {
-      steps.push(`更新项目描述：${payload.description || '空'}`)
-    }
-    if (settingForm.condaModifyEnabled) {
-      const condaAction = payload.create_conda_env
-        ? `创建并切换Conda环境：${payload.conda_env_name} (python=${payload.python_version || '未指定'})`
-        : `切换Conda环境：${payload.conda_env_name || '空'}`
-      steps.push(condaAction)
-      if (payload.drop_original_conda_env) {
-        steps.push('删除原Conda环境：已选择不保留')
-      }
-    }
-    if (String(payload.entry_file_path || '').trim()) {
-      steps.push(`保存项目入口文件：${payload.entry_file_path}`)
-    }
-    if (String(payload.dev_start_command || '').trim()) {
-      steps.push(`保存开发启动命令：${payload.dev_start_command}`)
-    }
-    if (String(payload.deploy_start_command || '').trim()) {
-      steps.push(`保存部署启动命令：${payload.deploy_start_command}`)
-    }
-    if (payload.nginx_enabled) {
-      steps.push(`保存Nginx配置：${payload.nginx_conf_path || '未选择配置文件'}`)
-      if (payload.nginx_server_ip) steps.push(`Nginx服务器IP：${payload.nginx_server_ip}`)
-      if (payload.frontend_port) steps.push(`使用Nginx前端端口：${payload.frontend_port}`)
-      if (payload.backend_deploy_port) steps.push(`使用后端部署端口：${payload.backend_deploy_port}`)
-      if (payload.drop_original_nginx_config) {
-        steps.push('删除原Nginx配置：已选择不保留')
-      }
+    steps.push(`步骤1 项目描述：${terminalValue(payload.description)}（${settingModifyText(settingForm.descriptionModifyEnabled)}）`)
+    steps.push(`步骤2 Conda环境：${terminalValue(payload.conda_env_name)}（${settingModifyText(settingForm.condaModifyEnabled)}）`)
+    steps.push(`      Python版本：${terminalValue(payload.python_version)}`)
+    if (payload.create_conda_env) {
+      steps.push('      Conda处理：创建新环境')
+    } else if (payload.drop_original_conda_env) {
+      steps.push('      Conda处理：删除原环境')
     } else {
-      steps.push('Nginx配置：不启用')
+      steps.push('      Conda处理：无额外操作')
+    }
+    steps.push(`步骤3 项目入口文件：${terminalValue(payload.entry_file_path)}（${settingModifyText(settingForm.entryFilePathModifyEnabled)}）`)
+    steps.push(`步骤4 开发启动命令：${terminalValue(payload.dev_start_command)}（${settingModifyText(settingForm.devCommandModifyEnabled)}）`)
+    steps.push(`步骤5 部署启动命令：${terminalValue(payload.deploy_start_command)}（${settingModifyText(settingForm.deployCommandModifyEnabled)}）`)
+    if (payload.nginx_enabled) {
+      steps.push(`步骤6 Nginx配置：启用（${settingForm.nginxModifyEnabled ? '已开启修改' : '未修改或仅启用'}）`)
+      steps.push(`      Nginx服务器IP：${terminalValue(payload.nginx_server_ip)}`)
+      steps.push(`      Nginx配置文件：${terminalValue(payload.nginx_conf_path)}`)
+      steps.push(`      Nginx前端端口：${terminalValue(payload.frontend_port)}`)
+      steps.push(`      后端部署端口：${terminalValue(payload.backend_deploy_port)}`)
+      steps.push(`      原Nginx配置：${payload.drop_original_nginx_config ? '删除原配置' : '保留或无原配置'}`)
+    } else {
+      steps.push('步骤6 Nginx配置：不启用')
     }
     if (String(payload.database_name || '').trim()) {
-      steps.push(`保存数据库配置：${payload.database_name}`)
-      steps.push(`数据库地址：${payload.database_host}:${payload.database_port}`)
-      if (payload.drop_original_database) {
-        steps.push('删除原数据库：已选择不保留')
-      }
+      steps.push(`步骤7 数据库配置：启用（${settingForm.databaseModifyEnabled ? '已开启修改' : '未修改或仅启用'}）`)
+      steps.push(`      数据库名称：${terminalValue(payload.database_name)}`)
+      steps.push(`      数据库地址：${terminalValue(payload.database_host)}:${terminalValue(payload.database_port)}`)
+      steps.push(`      数据库账号：${terminalValue(payload.database_user)}`)
+      steps.push(`      原数据库：${payload.drop_original_database ? '删除原数据库' : '保留或无原数据库'}`)
     } else {
-      steps.push('数据库配置：不启用')
+      steps.push('步骤7 数据库配置：不启用')
     }
     return steps
+  }
+
+  const extractSettingActualActions = (resp) => {
+    const data = resp?.data?.data || {}
+    const list = Array.isArray(data.actions) ? data.actions : []
+    return list.map((item) => String(item || '').trim()).filter(Boolean)
   }
 
   const appendSettingStep = async (sessionId, line, delay = 100) => {
@@ -507,16 +533,22 @@ export const useDashboardDialogs = (options) => {
       )
       const msg = String(resp.data?.message || '设置保存成功')
       if (sessionInfo?.localSessionId) {
+        const actualActions = extractSettingActualActions(resp)
+        await appendSettingStep(sessionInfo.localSessionId, '  后端实际执行差异：', 0)
+        if (actualActions.length) {
+          for (const item of actualActions) {
+            await appendSettingStep(sessionInfo.localSessionId, `    - ${item}`, 0)
+          }
+        } else {
+          await appendSettingStep(sessionInfo.localSessionId, '    - 无实际变更', 0)
+        }
         await appendSettingStep(sessionInfo.localSessionId, `2.开始保存项目设置：${settingForm.projectName} ---> 已完成`)
-        await appendSettingStep(sessionInfo.localSessionId, '')
-        await appendSettingStep(sessionInfo.localSessionId, '3.刷新项目列表 ---> 进行中')
       }
       ElMessage.success(msg)
       await projectStore.loadBundle()
       if (sessionInfo?.localSessionId) {
-        await appendSettingStep(sessionInfo.localSessionId, '3.刷新项目列表 ---> 已完成')
         await appendSettingStep(sessionInfo.localSessionId, '')
-        await appendSettingStep(sessionInfo.localSessionId, '4.项目设置保存成功', 0)
+        await appendSettingStep(sessionInfo.localSessionId, '3.项目设置保存成功', 0)
       }
     } catch (error) {
       const msg = getErrorMessage(error, '设置保存失败')
@@ -712,7 +744,7 @@ export const useDashboardDialogs = (options) => {
   const handleProjectAction = async (actionCode, project) => {
     if (!canAction('projects', actionCode)) return
     const projectStatus = String(project?.status || '').trim()
-    if (projectStore.isProjectBusy(project?.id) || [PROJECT_CREATING_TEXT, PROJECT_SETTING_TEXT].includes(projectStatus)) {
+    if (projectStore.isProjectBusy(project?.id) || [PROJECT_CREATING_TEXT, PROJECT_SETTING_TEXT, PROJECT_SYNCING_TEXT].includes(projectStatus)) {
       ElMessage.warning('项目任务正在执行中，请等待后端实际返回后再操作')
       return
     }
@@ -787,7 +819,7 @@ export const useDashboardDialogs = (options) => {
     }
 
     if (actionCode === 'setting') {
-      openSettingDialog(project)
+      await openSettingDialog(project)
       return
     }
 
@@ -862,6 +894,7 @@ export const useDashboardDialogs = (options) => {
     onSyncProjectDatabaseCheck,
     onSyncProjectNginxCheck,
     onSyncProjectNginxPortBlur,
+    onSyncProjectNginxFrontendPortChange,
     onCreateProjectDatabaseCheck,
     onCreateProjectNginxCheck,
     onCreateProjectNginxPortBlur,

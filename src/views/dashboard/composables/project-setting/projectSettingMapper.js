@@ -3,7 +3,30 @@ import {
   DEFAULT_DB_PORT,
   DEFAULT_DB_USER,
 } from '../dialogConstants'
-import { buildCascaderPathValues } from '../dialogUtils'
+import { buildCascaderPathValues, toProjectRelativePath } from '../dialogUtils'
+
+const firstText = (...values) => {
+  for (const value of values) {
+    const text = String(value ?? '').trim()
+    if (text) return text
+  }
+  return ''
+}
+
+const collectNginxConfOptions = (...values) => {
+  const seen = new Set()
+  const result = []
+  for (const value of values) {
+    const list = Array.isArray(value) ? value : [value]
+    for (const item of list) {
+      const path = typeof item === 'string' ? item : firstText(item?.path, item?.value, item?.conf_path)
+      if (!path || seen.has(path)) continue
+      seen.add(path)
+      result.push(typeof item === 'string' ? { path, source: 'existing' } : { ...item, path })
+    }
+  }
+  return result
+}
 
 /**
  * Fill project setting form from one project row.
@@ -11,6 +34,25 @@ import { buildCascaderPathValues } from '../dialogUtils'
  */
 export const fillProjectSettingForm = ({ settingForm, project, projectStore }) => {
   const serverIpOptions = (projectStore.servers || []).map((x) => String(x.ip || '').trim()).filter((x) => !!x)
+  const nginxConfPath = firstText(
+    project.nginxPath,
+    project.nginxConfPath,
+    project.nginx_conf_path,
+    project.nginx_path,
+    project.nginxExistingConfPath,
+    project.nginx_existing_conf_path,
+  )
+  const nginxServerIp = firstText(project.nginxServerIp, project.nginx_server_ip)
+  const frontendPort = firstText(project.frontendPort, project.frontend_port)
+  const backendDeployPort = firstText(project.backendDeployPort, project.backend_deploy_port)
+  const nginxConfigText = firstText(project.nginxConfigText, project.nginx_config_text)
+  const hasNginxConfig = !!(
+    nginxConfPath
+    || nginxServerIp
+    || frontendPort
+    || backendDeployPort
+    || nginxConfigText
+  )
 
   settingForm.projectId = project.id
   settingForm.projectName = project.name
@@ -24,17 +66,23 @@ export const fillProjectSettingForm = ({ settingForm, project, projectStore }) =
   settingForm.backendPath = project.backendPath || ''
   settingForm.entryFilePath = String(project.entryFilePath || project.entry_file_path || '').trim()
   settingForm.entryFilePathModifyEnabled = false
-  settingForm.entryFilePathCascaderValue = buildCascaderPathValues(settingForm.entryFilePath)
-  settingForm.backendDevPort = project.backendDevPort
-  settingForm.backendDeployPort = project.backendDeployPort || ''
-  settingForm.frontendPort = project.frontendPort || ''
-  settingForm.nginxEnabled = !!String(project.nginxPath || '').trim()
+  settingForm.entryFilePathCascaderValue = buildCascaderPathValues(toProjectRelativePath(settingForm.backendPath, settingForm.entryFilePath))
+  settingForm.backendDevPort = project.backendDevPort || project.backend_dev_port || ''
+  settingForm.backendDeployPort = backendDeployPort
+  settingForm.frontendPort = frontendPort
+  settingForm.nginxEnabled = hasNginxConfig
   settingForm.nginxModifyEnabled = false
   settingForm.dropOriginalNginxConfig = false
-  settingForm.nginxServerIp = String(project.nginxServerIp || project.nginx_server_ip || project.serverIp || '').trim()
-  settingForm.nginxConfPath = String(project.nginxPath || '').trim()
-  settingForm.nginxConfigText = String(project.nginxConfigText || project.nginx_config_text || '').trim()
-  settingForm.nginxConfOptions = settingForm.nginxConfPath ? [{ path: settingForm.nginxConfPath, source: 'existing' }] : []
+  settingForm.nginxServerIp = nginxServerIp || String(project.serverIp || project.server_ip || '').trim()
+  settingForm.nginxConfPath = nginxConfPath
+  settingForm.nginxConfigText = nginxConfigText
+  settingForm.nginxConfOptions = collectNginxConfOptions(
+    project.nginxConfOptions,
+    project.nginx_conf_options,
+    project.nginxConfFiles,
+    project.nginx_conf_files,
+    settingForm.nginxConfPath ? { path: settingForm.nginxConfPath, source: 'current', selectable: true, status: 'available' } : null,
+  )
   settingForm.nginxNewConfDirs = []
   settingForm.nginxExistingConfPath = settingForm.nginxConfPath
   settingForm.nginxNewConfBaseDir = ''
@@ -56,7 +104,7 @@ export const fillProjectSettingForm = ({ settingForm, project, projectStore }) =
   settingForm.devCommandModifyEnabled = false
   settingForm.deployCommand = String(project.deployCommand || project.deploy_start_command || '')
   settingForm.deployCommandModifyEnabled = false
-  settingForm.serverIp = String(project.serverIp || '').trim()
+  settingForm.serverIp = String(project.serverIp || project.server_ip || '').trim()
   settingForm.serverIpOptions = serverIpOptions
   settingForm.databaseName = String(project.databaseName || '').trim()
   settingForm.databaseModifyEnabled = false

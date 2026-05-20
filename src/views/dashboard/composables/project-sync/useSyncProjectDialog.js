@@ -8,8 +8,7 @@ import {
   DEFAULT_DB_PASSWORD,
   DEFAULT_DB_PORT,
   DEFAULT_DB_USER,
-  PORT_MAX,
-  PORT_MIN,
+  PROJECT_SYNCING_TEXT,
 } from '../dialogConstants'
 
 const normalizeJoinPath = (base, rel) => {
@@ -62,13 +61,6 @@ export const useSyncProjectDialog = (options) => {
       return !!value && !hasWildcard(value) && !isNginxModulesPath(value)
     })
   })
-
-  const isPortValid = (value) => {
-    const text = String(value || '').trim()
-    if (!/^\d+$/.test(text)) return false
-    const num = Number(text)
-    return num >= PORT_MIN && num <= PORT_MAX
-  }
 
   const syncProjectFieldsForView = computed(() => {
     const serverSelected = !!String(syncProjectForm.serverIp || '').trim()
@@ -214,9 +206,15 @@ export const useSyncProjectDialog = (options) => {
       {
         key: 'nginxFrontendPort',
         label: 'Nginx前端端口',
-        component: 'input',
-        placeholder: '例如 8080',
-        disabled: nginxPortDisabled,
+        component: 'select',
+        placeholder: nginxConfSelected ? '请选择已有listen端口' : '请先选择Nginx配置文件',
+        options: (syncProjectForm.nginxServerPortOptions || []).map((item) => ({
+          label: String(item.frontend_port || ''),
+          selectedLabel: String(item.frontend_port || ''),
+          optionLabel: `${item.frontend_port || ''} → ${item.backend_deploy_port || ''}`,
+          value: String(item.frontend_port || ''),
+        })),
+        disabled: nginxPortDisabled || !(syncProjectForm.nginxServerPortOptions || []).length,
         span: 12,
         visible: syncProjectForm.enableNginx,
       },
@@ -224,8 +222,8 @@ export const useSyncProjectDialog = (options) => {
         key: 'nginxBackendPort',
         label: '后端部署端口',
         component: 'input',
-        placeholder: '例如 8000',
-        disabled: nginxPortDisabled,
+        placeholder: '选择前端端口后自动回显',
+        disabled: true,
         span: 12,
         visible: syncProjectForm.enableNginx,
       },
@@ -305,6 +303,8 @@ export const useSyncProjectDialog = (options) => {
     syncProjectForm.nginxConfOptions = []
     syncProjectForm.nginxExistingConfPath = ''
     syncProjectForm.nginxConfPath = ''
+    syncProjectForm.nginxServerPortOptions = []
+    syncProjectForm.nginxSelectedServerBlock = ''
     syncProjectForm.nginxFrontendPortChecked = false
     syncProjectForm.nginxBackendPortChecked = false
     if (clearIp) syncProjectForm.nginxServerIp = ''
@@ -343,6 +343,8 @@ export const useSyncProjectDialog = (options) => {
     syncProjectForm.dbChecking = false
     syncProjectForm.dbMessage = ''
     syncProjectForm.enableNginx = false
+    syncProjectForm.nginxServerPortOptions = []
+    syncProjectForm.nginxSelectedServerBlock = ''
     syncProjectForm.nginxFrontendPort = ''
     syncProjectForm.nginxBackendPort = ''
     syncProjectForm.syncing = false
@@ -606,6 +608,63 @@ export const useSyncProjectDialog = (options) => {
     }
   }
 
+  const loadSyncNginxServerPortOptions = async () => {
+    if (!syncProjectForm.enableNginx) return true
+    const serverIp = String(syncProjectForm.serverIp || '').trim()
+    const nginxServerIp = String(syncProjectForm.nginxServerIp || '').trim()
+    const nginxConfPath = String(syncProjectForm.nginxConfPath || '').trim()
+    syncProjectForm.nginxServerPortOptions = []
+    syncProjectForm.nginxSelectedServerBlock = ''
+    syncProjectForm.nginxFrontendPort = ''
+    syncProjectForm.nginxBackendPort = ''
+    syncProjectForm.nginxFrontendPortChecked = false
+    syncProjectForm.nginxBackendPortChecked = false
+    if (!serverIp || !nginxServerIp || !nginxConfPath) return false
+    try {
+      const resp = await projectApi.listSyncNginxServerPortOptions({
+        server_ip: serverIp,
+        nginx_server_ip: nginxServerIp,
+        nginx_conf_path: nginxConfPath,
+      })
+      const rows = Array.isArray(resp.data?.data?.options) ? resp.data.data.options : []
+      syncProjectForm.nginxServerPortOptions = rows.map((item) => ({
+        label: `${item.frontend_port || ''} → ${item.backend_deploy_port || ''}`,
+        frontend_port: String(item.frontend_port || ''),
+        backend_deploy_port: String(item.backend_deploy_port || ''),
+        server_name: item.server_name || '',
+        nginx_config_text: item.nginx_config_text || '',
+      })).filter((item) => item.frontend_port && item.backend_deploy_port)
+      if (!syncProjectForm.nginxServerPortOptions.length) {
+        ElMessage.warning('所选Nginx配置文件中没有可同步的端口配置')
+        return false
+      }
+      ElMessage.success('已加载已有Nginx端口配置')
+      return true
+    } catch (error) {
+      ElMessage.warning(getErrorMessage(error, '加载Nginx端口配置失败'))
+      return false
+    }
+  }
+
+  const onSyncProjectNginxFrontendPortChange = async () => {
+    const frontend = String(syncProjectForm.nginxFrontendPort || '').trim()
+    const options = Array.isArray(syncProjectForm.nginxServerPortOptions) ? syncProjectForm.nginxServerPortOptions : []
+    const matched = options.find((item) => String(item.frontend_port || '') === frontend)
+    if (!frontend || !matched) {
+      syncProjectForm.nginxBackendPort = ''
+      syncProjectForm.nginxSelectedServerBlock = ''
+      syncProjectForm.nginxFrontendPortChecked = false
+      syncProjectForm.nginxBackendPortChecked = false
+      return false
+    }
+    syncProjectForm.nginxBackendPort = String(matched.backend_deploy_port || '')
+    syncProjectForm.nginxSelectedServerBlock = matched.nginx_config_text || ''
+    syncProjectForm.nginxFrontendPortChecked = true
+    syncProjectForm.nginxBackendPortChecked = !!syncProjectForm.nginxBackendPort
+    if (!validateNginxPortPair()) return false
+    return await checkSyncNginxServerBlockIfReady()
+  }
+
   const validateNginxPortPair = () => {
     const serverIp = String(syncProjectForm.serverIp || '').trim()
     const nginxIp = String(syncProjectForm.nginxServerIp || '').trim()
@@ -620,46 +679,10 @@ export const useSyncProjectDialog = (options) => {
     return true
   }
 
-  const onSyncProjectNginxPortBlur = async (kind) => {
-    if (!syncProjectForm.enableNginx) return true
-    if (!String(syncProjectForm.nginxConfPath || '').trim()) {
-      ElMessage.warning('请先选择Nginx配置文件')
-      return false
-    }
-    const isFrontend = kind === 'frontend'
-    const key = isFrontend ? 'nginxFrontendPort' : 'nginxBackendPort'
-    const checkedKey = isFrontend ? 'nginxFrontendPortChecked' : 'nginxBackendPortChecked'
-    const label = isFrontend ? 'Nginx前端端口' : '后端部署端口'
-    const portText = String(syncProjectForm[key] || '').trim()
-    syncProjectForm[checkedKey] = false
-    if (!isPortValid(portText)) {
-      if (portText) ElMessage.warning(`${label}需在 ${PORT_MIN}-${PORT_MAX} 范围内`)
-      return false
-    }
-    if (!validateNginxPortPair()) return false
-    try {
-      await projectApi.checkProjectPort({
-        project_id: 0,
-        port: Number(portText),
-        check_nginx_conf: true,
-        nginx_server_ip: String(syncProjectForm.nginxServerIp || '').trim(),
-      })
-      syncProjectForm[checkedKey] = true
-      ElMessage.success(`${label}可用`)
-      return await checkSyncNginxServerBlockIfReady()
-    } catch (error) {
-      // 同步已有项目的后端部署端口可能已经被真实服务监听，后端最终会允许这种情况；
-      // 前端这里仍提示用户，但不把后端端口强制卡死在系统占用上。
-      const errorMessage = getErrorMessage(error, '')
-      if (!isFrontend && errorMessage.includes('系统占用') && !errorMessage.includes('Nginx')) {
-        syncProjectForm[checkedKey] = true
-        ElMessage.warning('后端部署端口已被服务占用，按已有项目同步场景继续使用')
-        return await checkSyncNginxServerBlockIfReady()
-      }
-      ElMessage.warning(errorMessage || `${label}校验失败`)
-      return false
-    }
-    return await checkSyncNginxServerBlockIfReady()
+  const onSyncProjectNginxPortBlur = async () => {
+    // 同步已有项目不创建新端口，不做“端口可用”检测。
+    // 前端端口只能从已解析出的 listen 下拉框选择，后端部署端口由同一个 server 块的 proxy_pass 自动回显。
+    return await onSyncProjectNginxFrontendPortChange()
   }
 
   async function checkSyncNginxServerBlockIfReady() {
@@ -715,12 +738,20 @@ export const useSyncProjectDialog = (options) => {
         ElMessage.warning('请选择Nginx配置文件')
         return false
       }
-      if (!syncProjectForm.nginxFrontendPortChecked) {
-        const ok = await onSyncProjectNginxPortBlur('frontend')
-        if (!ok) return false
+      if (!(syncProjectForm.nginxServerPortOptions || []).length) {
+        const loaded = await loadSyncNginxServerPortOptions()
+        if (!loaded) return false
       }
-      if (!syncProjectForm.nginxBackendPortChecked) {
-        const ok = await onSyncProjectNginxPortBlur('backend')
+      if (!String(syncProjectForm.nginxFrontendPort || '').trim()) {
+        ElMessage.warning('请选择已有Nginx前端端口')
+        return false
+      }
+      if (!String(syncProjectForm.nginxBackendPort || '').trim()) {
+        ElMessage.warning('未找到该前端端口对应的后端部署端口')
+        return false
+      }
+      if (!syncProjectForm.nginxFrontendPortChecked || !syncProjectForm.nginxBackendPortChecked) {
+        const ok = await onSyncProjectNginxFrontendPortChange()
         if (!ok) return false
       }
       const nginxBlockOk = await checkSyncNginxServerBlockIfReady()
@@ -739,11 +770,45 @@ export const useSyncProjectDialog = (options) => {
 
   const confirmSyncProject = async () => {
     if (!(await ensureSyncProjectReady())) return
+    const projectName = String(syncProjectForm.name || '').trim()
+    const serverIp = String(syncProjectForm.serverIp || '').trim()
+    const enableDatabase = !!syncProjectForm.enableDatabase
+    const enableNginx = !!syncProjectForm.enableNginx
+    const tempProject = {
+      id: 0,
+      owner: projectStore.currentUsername?.value ?? projectStore.currentUsername ?? '',
+      name: projectName,
+      description: String(syncProjectForm.description || '').trim(),
+      serverIp,
+      backendPath: String(syncProjectForm.backendPath || '').trim(),
+      entryFilePath: String(syncProjectForm.entryFilePath || '').trim(),
+      condaEnvName: String(syncProjectForm.condaEnvName || '').trim(),
+      pythonVersion: String(syncProjectForm.pythonVersion || '').trim(),
+      databaseName: enableDatabase ? String(syncProjectForm.databaseName || '').trim() : '',
+      databaseHost: enableDatabase ? String(syncProjectForm.databaseHost || '').trim() : '',
+      databasePort: enableDatabase ? String(syncProjectForm.databasePort || '').trim() : '',
+      databaseUser: enableDatabase ? String(syncProjectForm.databaseUser || '').trim() : '',
+      databasePassword: enableDatabase ? String(syncProjectForm.databasePassword || '') : '',
+      nginxPath: enableNginx ? String(syncProjectForm.nginxConfPath || '').trim() : '',
+      nginxServerIp: enableNginx ? String(syncProjectForm.nginxServerIp || '').trim() : '',
+      frontendPort: enableNginx ? String(syncProjectForm.nginxFrontendPort || '').trim() : '',
+      backendDeployPort: enableNginx ? String(syncProjectForm.nginxBackendPort || '').trim() : '',
+      nginxConfigText: enableNginx ? String(syncProjectForm.nginxSelectedServerBlock || '') : '',
+      status: PROJECT_SYNCING_TEXT,
+      serviceStatus: PROJECT_SYNCING_TEXT,
+    }
+    const existsLocal = projectStore.projects.some((item) => item.name === projectName)
+    if (existsLocal) {
+      projectStore.updateProjectByName(projectName, tempProject)
+    } else {
+      projectStore.prependProject(tempProject)
+    }
+    syncProjectDialogVisible.value = false
     try {
       syncProjectForm.syncing = true
       const resp = await projectApi.syncExistingProject({
-        server_ip: String(syncProjectForm.serverIp || '').trim(),
-        name: String(syncProjectForm.name || '').trim(),
+        server_ip: serverIp,
+        name: projectName,
         description: String(syncProjectForm.description || '').trim(),
         backend_path: String(syncProjectForm.backendPath || '').trim(),
         entry_file_path: String(syncProjectForm.entryFilePath || '').trim(),
@@ -760,9 +825,8 @@ export const useSyncProjectDialog = (options) => {
         nginx_conf_path: String(syncProjectForm.nginxConfPath || '').trim(),
         frontend_port: String(syncProjectForm.nginxFrontendPort || '').trim(),
         backend_deploy_port: String(syncProjectForm.nginxBackendPort || '').trim(),
-        nginx_config_text: '',
+        nginx_config_text: String(syncProjectForm.nginxSelectedServerBlock || ''),
       })
-      syncProjectDialogVisible.value = false
       ElMessage.success(resp.data?.message || '同步成功')
       await projectStore.loadBundle()
     } catch (error) {
@@ -833,16 +897,20 @@ export const useSyncProjectDialog = (options) => {
   )
 
   watch(
-    () => syncProjectForm.nginxFrontendPort,
-    () => {
+    () => syncProjectForm.nginxConfPath,
+    async (value, oldValue) => {
+      const next = String(value || '').trim()
+      const prev = String(oldValue || '').trim()
+      if (next === prev) return
+      syncProjectForm.nginxServerPortOptions = []
+      syncProjectForm.nginxSelectedServerBlock = ''
+      syncProjectForm.nginxFrontendPort = ''
+      syncProjectForm.nginxBackendPort = ''
       syncProjectForm.nginxFrontendPortChecked = false
-    },
-  )
-
-  watch(
-    () => syncProjectForm.nginxBackendPort,
-    () => {
       syncProjectForm.nginxBackendPortChecked = false
+      if (next && syncProjectForm.enableNginx && syncProjectForm.nginxChecked) {
+        await loadSyncNginxServerPortOptions()
+      }
     },
   )
 
@@ -865,5 +933,6 @@ export const useSyncProjectDialog = (options) => {
     onSyncProjectDatabaseCheck,
     onSyncProjectNginxCheck,
     onSyncProjectNginxPortBlur,
+    onSyncProjectNginxFrontendPortChange,
   }
 }

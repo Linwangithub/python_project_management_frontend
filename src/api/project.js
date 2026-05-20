@@ -136,6 +136,13 @@ export const projectApi = {
       backend_deploy_port: payload.backend_deploy_port || '',
     })
   },
+  listSyncNginxServerPortOptions(payload) {
+    return request.post('/pspm/projects/sync/nginx-server-port-options', {
+      server_ip: payload.server_ip || '',
+      nginx_server_ip: payload.nginx_server_ip || '',
+      nginx_conf_path: payload.nginx_conf_path || '',
+    })
+  },
   syncExistingProject(payload) {
     return request.post('/pspm/projects/sync', {
       ...payload,

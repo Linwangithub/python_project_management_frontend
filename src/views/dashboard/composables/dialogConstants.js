@@ -1,5 +1,6 @@
 export const PROJECT_CREATING_TEXT = '创建中'
 export const PROJECT_SETTING_TEXT = '设置中'
+export const PROJECT_SYNCING_TEXT = '同步中'
 export const PROJECT_CREATED_TEXT = '创建成功'
 export const PROJECT_CREATE_FAILED_TEXT = '创建失败'
 export const PROJECT_RUNNING_TEXT = '运行中'

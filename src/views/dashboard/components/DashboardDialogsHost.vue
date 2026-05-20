@@ -44,6 +44,7 @@
     @database-check="emit('syncProjectDbCheck')"
     @nginx-check="emit('syncProjectNginxCheck')"
     @nginx-port-blur="emit('syncProjectNginxPortBlur', $event)"
+    @nginx-frontend-port-change="emit('syncProjectNginxFrontendPortChange')"
   />
 
   <ProjectSettingDialog
@@ -259,6 +260,7 @@ const emit = defineEmits([
   'syncProjectDbCheck',
   'syncProjectNginxCheck',
   'syncProjectNginxPortBlur',
+  'syncProjectNginxFrontendPortChange',
   'create-project-name-blur',
   'create-project-db-check',
   'create-project-nginx-check',

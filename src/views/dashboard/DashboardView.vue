@@ -160,6 +160,7 @@
     @sync-project-db-check="onSyncProjectDatabaseCheck"
     @sync-project-nginx-check="onSyncProjectNginxCheck"
     @sync-project-nginx-port-blur="onSyncProjectNginxPortBlur"
+    @sync-project-nginx-frontend-port-change="onSyncProjectNginxFrontendPortChange"
     @create-project-name-blur="checkProjectNameOnBlur"
     @create-project-db-check="onCreateProjectDatabaseCheck"
     @create-project-nginx-check="onCreateProjectNginxCheck"
@@ -338,6 +339,7 @@ const {
   onSyncProjectDatabaseCheck,
   onSyncProjectNginxCheck,
   onSyncProjectNginxPortBlur,
+  onSyncProjectNginxFrontendPortChange,
   onCreateProjectDatabaseCheck,
   onCreateProjectNginxCheck,
   onCreateProjectNginxPortBlur,

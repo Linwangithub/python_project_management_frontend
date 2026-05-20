@@ -6,8 +6,13 @@ export const hasText = (value) => String(value || '').trim().length > 0
 
 export const normalizeAbsolutePath = (basePath, entryPath) => {
   const base = String(basePath || '').trim().replace(/\/+$/, '')
-  const entry = String(entryPath || '').trim().replace(/^\/+/, '')
-  if (!entry) return ''
+  const rawEntry = String(entryPath || '').trim()
+  if (!rawEntry) return ''
+  if (/^[a-zA-Z]:[\\/]/.test(rawEntry) || rawEntry.startsWith('/')) {
+    return rawEntry
+  }
+  const entry = rawEntry.replace(/^\/+/, '')
+  if (!base) return entry
   if (entry.startsWith(base)) return entry
   return `${base}/${entry}`
 }
@@ -101,4 +106,3 @@ export const stripNginxComments = (value) => {
     })
     .join('\n')
 }
-

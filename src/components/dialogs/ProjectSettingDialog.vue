@@ -580,7 +580,7 @@ import {
   sanitizePort,
   stripNginxComments,
 } from './project-setting/projectSettingUtils'
-import { buildCascaderPathValues } from '@/views/dashboard/composables/dialogUtils'
+import { buildCascaderPathValues, toProjectRelativePath } from '@/views/dashboard/composables/dialogUtils'
 
 const props = defineProps(['modelValue', 'width', 'fields', 'form'])
 const emit = defineEmits(['update:modelValue', 'confirm'])
@@ -604,6 +604,7 @@ const validatingPort = ref(false)
 const entryPathCascaderValue = ref([])
 const entryPathOptions = ref([])
 const configuredOnOpen = ref(false)
+const initializingWorkflow = ref(false)
 const stepperRef = ref(null)
 const stepNodeRefs = ref([])
 const stepperSize = ref({ width: 1, height: 1 })
@@ -688,7 +689,7 @@ const isDeployCommandEditable = computed(() => {
 const restoreOriginalEntryFilePath = () => {
   if (!props.form) return
   props.form.entryFilePath = originalBaseConfig.entryFilePath
-  props.form.entryFilePathCascaderValue = buildCascaderPathValues(originalBaseConfig.entryFilePath)
+  props.form.entryFilePathCascaderValue = buildCascaderPathValues(toProjectRelativePath(props.form.backendPath, originalBaseConfig.entryFilePath))
   entryPathCascaderValue.value = [...props.form.entryFilePathCascaderValue]
 }
 
@@ -756,7 +757,20 @@ const serverIpOptions = computed(() => {
 
 const nginxExistingConfOptions = computed(() => {
   const list = Array.isArray(props.form?.nginxConfOptions) ? props.form.nginxConfOptions : []
-  return list.map((item) => {
+  const currentPathSources = [
+    props.form?.nginxExistingConfPath,
+    props.form?.nginxConfPath,
+  ]
+  if (!props.form?.nginxModifyEnabled) {
+    currentPathSources.push(originalNginxConfig.existingConfPath, originalNginxConfig.confPath)
+  }
+  const currentPaths = currentPathSources
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((path) => ({ path, source: 'current', selectable: true }))
+
+  const seen = new Set()
+  return [...currentPaths, ...list].map((item) => {
     const path = typeof item === 'string' ? item : (item.value || item.path || '')
     const status = typeof item === 'string' ? 'available' : (item.status || 'available')
     const selectable = typeof item === 'string' ? true : item.selectable !== false
@@ -768,7 +782,10 @@ const nginxExistingConfOptions = computed(() => {
     }
   }).filter((item) => {
     const value = String(item.value || '').trim()
-    return !!value && !hasNginxWildcard(value) && !isNginxModulesPath(value)
+    if (!value || hasNginxWildcard(value) || isNginxModulesPath(value)) return false
+    if (seen.has(value)) return false
+    seen.add(value)
+    return true
   })
 })
 
@@ -1150,40 +1167,82 @@ const restoreOriginalDatabaseConfig = () => {
 }
 
 const captureOriginalNginxConfig = () => {
+  const optionPath = getFirstNginxConfOptionPath()
   originalNginxConfig.serverIp = String(props.form?.nginxServerIp || '').trim()
-  originalNginxConfig.confPath = String(props.form?.nginxConfPath || '').trim()
-  originalNginxConfig.existingConfPath = String(props.form?.nginxExistingConfPath || props.form?.nginxConfPath || '').trim()
+  originalNginxConfig.confPath = String(props.form?.nginxConfPath || props.form?.nginxExistingConfPath || optionPath || '').trim()
+  originalNginxConfig.existingConfPath = String(props.form?.nginxExistingConfPath || props.form?.nginxConfPath || optionPath || '').trim()
   originalNginxConfig.frontendPort = String(props.form?.frontendPort || '').trim()
   originalNginxConfig.backendDeployPort = String(props.form?.backendDeployPort || '').trim()
-  originalNginxConfig.configText = String(props.form?.nginxConfigText || '').trim()
+  originalNginxConfig.configText = String(props.form?.nginxConfigText || props.form?.nginxPreviewText || '').trim()
 }
 
 const hasOriginalNginxConfig = () => {
   return !!(
     originalNginxConfig.confPath
+    || originalNginxConfig.serverIp
+    || originalNginxConfig.frontendPort
+    || originalNginxConfig.backendDeployPort
     || originalNginxConfig.configText
   )
 }
 
-const restoreOriginalNginxConfig = () => {
+const ensureCurrentNginxConfOption = (path = '') => {
   if (!props.form) return
-  props.form.nginxServerIp = originalNginxConfig.serverIp
-  props.form.nginxConfPath = originalNginxConfig.confPath
-  props.form.nginxExistingConfPath = originalNginxConfig.existingConfPath || originalNginxConfig.confPath
-  props.form.frontendPort = originalNginxConfig.frontendPort
-  props.form.backendDeployPort = originalNginxConfig.backendDeployPort
-  props.form.nginxConfigText = originalNginxConfig.configText
-  props.form.nginxPreviewText = originalNginxConfig.configText
-  props.form.nginxPreviewDraft = originalNginxConfig.configText
-  props.form.nginxPreviewConfirmed = !!originalNginxConfig.configText
-  if (originalNginxConfig.confPath) {
-    const list = Array.isArray(props.form.nginxConfOptions) ? props.form.nginxConfOptions : []
-    const exists = list.some((item) => String((typeof item === 'string' ? item : (item.value || item.path || '')) || '').trim() === originalNginxConfig.confPath)
-    if (!exists) {
-      props.form.nginxConfOptions = [{ path: originalNginxConfig.confPath, source: 'existing' }, ...list]
+  const value = String(path || props.form.nginxExistingConfPath || props.form.nginxConfPath || '').trim()
+  if (!value || hasNginxWildcard(value) || isNginxModulesPath(value)) return
+  const list = Array.isArray(props.form.nginxConfOptions) ? props.form.nginxConfOptions : []
+  const exists = list.some((item) => String((typeof item === 'string' ? item : (item.value || item.path || '')) || '').trim() === value)
+  if (!exists) {
+    props.form.nginxConfOptions = [{ path: value, source: 'current', selectable: true, status: 'available' }, ...list]
+  }
+}
+
+const getFirstNginxConfOptionPath = () => {
+  const list = Array.isArray(props.form?.nginxConfOptions) ? props.form.nginxConfOptions : []
+  for (const item of list) {
+    const value = String((typeof item === 'string' ? item : (item?.path || item?.value || '')) || '').trim()
+    if (value && !hasNginxWildcard(value) && !isNginxModulesPath(value)) {
+      return value
     }
   }
-  props.form.nginxChecked = !!originalNginxConfig.confPath
+  return ''
+}
+
+const completeOriginalNginxConfigFromForm = () => {
+  if (!props.form) return
+  const optionPath = getFirstNginxConfOptionPath()
+  originalNginxConfig.serverIp = originalNginxConfig.serverIp || String(props.form.nginxServerIp || '').trim()
+  originalNginxConfig.confPath = originalNginxConfig.confPath || String(props.form.nginxConfPath || props.form.nginxExistingConfPath || optionPath || '').trim()
+  originalNginxConfig.existingConfPath = originalNginxConfig.existingConfPath || String(props.form.nginxExistingConfPath || props.form.nginxConfPath || optionPath || '').trim()
+  originalNginxConfig.frontendPort = originalNginxConfig.frontendPort || String(props.form.frontendPort || '').trim()
+  originalNginxConfig.backendDeployPort = originalNginxConfig.backendDeployPort || String(props.form.backendDeployPort || '').trim()
+  originalNginxConfig.configText = originalNginxConfig.configText || String(props.form.nginxConfigText || props.form.nginxPreviewText || '').trim()
+}
+
+const restoreOriginalNginxConfig = () => {
+  if (!props.form) return
+  completeOriginalNginxConfigFromForm()
+  const optionPath = getFirstNginxConfOptionPath()
+  const confPath = originalNginxConfig.confPath || originalNginxConfig.existingConfPath || optionPath
+  const existingConfPath = originalNginxConfig.existingConfPath || confPath
+  const configText = originalNginxConfig.configText || String(props.form.nginxConfigText || props.form.nginxPreviewText || '').trim()
+  props.form.nginxServerIp = originalNginxConfig.serverIp || String(props.form.nginxServerIp || '').trim()
+  props.form.nginxConfPath = confPath
+  props.form.nginxExistingConfPath = existingConfPath
+  props.form.frontendPort = originalNginxConfig.frontendPort || String(props.form.frontendPort || '').trim()
+  props.form.backendDeployPort = originalNginxConfig.backendDeployPort || String(props.form.backendDeployPort || '').trim()
+  props.form.nginxConfigText = configText
+  props.form.nginxPreviewText = configText
+  props.form.nginxPreviewDraft = configText
+  props.form.nginxPreviewConfirmed = !!configText
+  ensureCurrentNginxConfOption(existingConfPath || confPath)
+  props.form.nginxChecked = !!(
+    confPath
+    || originalNginxConfig.serverIp
+    || originalNginxConfig.frontendPort
+    || originalNginxConfig.backendDeployPort
+    || configText
+  )
   props.form.nginxFrontendPortChecked = !!originalNginxConfig.frontendPort
   props.form.nginxBackendPortChecked = !!originalNginxConfig.backendDeployPort
   props.form.nginxNewConfBaseDir = ''
@@ -1194,10 +1253,24 @@ const restoreOriginalNginxConfig = () => {
   props.form.nginxPreviewVisible = false
 }
 
+const restoreSavedNginxConfigFromOptions = () => {
+  if (!props.form || !props.form.nginxEnabled || props.form.nginxModifyEnabled) return
+  if (props.form.nginxConfPath && props.form.nginxExistingConfPath) return
+  const optionPath = getFirstNginxConfOptionPath()
+  const confPath = String(props.form.nginxConfPath || props.form.nginxExistingConfPath || optionPath || '').trim()
+  if (!confPath) return
+  props.form.nginxConfPath = confPath
+  props.form.nginxExistingConfPath = confPath
+  originalNginxConfig.confPath = confPath
+  originalNginxConfig.existingConfPath = confPath
+  ensureCurrentNginxConfOption(confPath)
+}
+
 const clearNginxConfigForEdit = () => {
   if (!props.form) return
   props.form.nginxServerIp = ''
   props.form.nginxConfPath = ''
+  props.form.nginxConfOptions = []
   props.form.nginxExistingConfPath = ''
   props.form.nginxNewConfBaseDir = ''
   props.form.nginxNewConfDirPath = ''
@@ -1228,7 +1301,7 @@ const originalNginxChanged = () => {
 }
 
 const canReactToNginxEditChange = () => {
-  return props.modelValue && props.form?.nginxEnabled && isNginxConfigEditable.value
+  return props.modelValue && !initializingWorkflow.value && props.form?.nginxEnabled && isNginxConfigEditable.value
 }
 
 const clearNginxCheckState = (options = {}) => {
@@ -1245,6 +1318,9 @@ const clearNginxCheckState = (options = {}) => {
   props.form.nginxConfOptions = []
   props.form.nginxNewConfDirs = []
   props.form.nginxExistingConfPath = preserveConf ? preservedExistingConfPath : ''
+  if (preserveConf) {
+    ensureCurrentNginxConfOption(preservedExistingConfPath || preservedConfPath)
+  }
   props.form.nginxNewConfBaseDir = ''
   props.form.nginxNewConfDirPath = ''
   props.form.nginxNewConfDirCascaderValue = []
@@ -1452,8 +1528,16 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
   if (!props.form?.nginxEnabled) return true
   const serverIp = String(props.form?.serverIp || '').trim()
   const nginxServerIp = String(props.form?.nginxServerIp || '').trim()
-  const selectedConfPath = String(props.form?.nginxConfPath || props.form?.nginxExistingConfPath || '').trim()
-  const selectedConfigText = String(props.form?.nginxConfigText || '').trim()
+  const configuredConfPath = String(props.form?.nginxConfPath || props.form?.nginxExistingConfPath || '').trim()
+  const canPreserveOriginalConf = hasOriginalNginxConfig() && !props.form?.nginxModifyEnabled
+  const originalConfPath = canPreserveOriginalConf
+    ? String(originalNginxConfig.confPath || originalNginxConfig.existingConfPath || '').trim()
+    : ''
+  const selectedConfPath = String(configuredConfPath || originalConfPath || '').trim()
+  const configuredConfigText = String(props.form?.nginxConfigText || '').trim()
+  const selectedConfigText = canPreserveOriginalConf
+    ? (configuredConfigText || String(originalNginxConfig.configText || '').trim())
+    : configuredConfigText
   if (!serverIp) {
     ElMessage.warning('项目服务器IP缺失')
     return false
@@ -1463,7 +1547,7 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
     return false
   }
   try {
-    clearNginxCheckState({ clearServerIp: false, preserveConf: true })
+    clearNginxCheckState({ clearServerIp: false, preserveConf: canPreserveOriginalConf })
     props.form.nginxServerIp = nginxServerIp
     props.form.nginxChecking = true
     const resp = await projectApi.checkProjectNginx({
@@ -1476,20 +1560,28 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
     const newConfDirs = Array.isArray(data.new_conf_dirs) ? data.new_conf_dirs : []
     if (!confPath && !confFiles.length && !newConfDirs.length) {
       ElMessage.warning('请先确认Nginx详细配置')
-      clearNginxCheckState({ clearServerIp: false, preserveConf: true })
+      clearNginxCheckState({ clearServerIp: false, preserveConf: canPreserveOriginalConf })
       return false
     }
-    const nextConfOptions = confFiles.length ? [...confFiles] : (confPath ? [{ path: confPath, source: 'main' }] : [])
-    if (selectedConfPath && !nextConfOptions.some((item) => String((item.path || item.value || item) || '').trim() === selectedConfPath)) {
-      nextConfOptions.unshift({ path: selectedConfPath, source: 'current' })
+    const nextConfOptions = []
+    if (selectedConfPath) {
+      nextConfOptions.push({ path: selectedConfPath, source: 'current', selectable: true, status: 'available' })
     }
+    nextConfOptions.push(...(confFiles.length ? confFiles : (confPath ? [{ path: confPath, source: 'main' }] : [])))
     props.form.nginxConfOptions = nextConfOptions
     props.form.nginxNewConfDirs = newConfDirs
     if (selectedConfPath) {
       props.form.nginxConfPath = selectedConfPath
       props.form.nginxExistingConfPath = selectedConfPath
+      if (canPreserveOriginalConf) {
+        originalNginxConfig.confPath = selectedConfPath
+        originalNginxConfig.existingConfPath = selectedConfPath
+      }
     }
     props.form.nginxConfigText = selectedConfigText
+    if (selectedConfigText && canPreserveOriginalConf) {
+      originalNginxConfig.configText = selectedConfigText
+    }
     props.form.nginxPreviewText = selectedConfigText || buildNginxPreview()
     props.form.nginxPreviewDraft = props.form.nginxPreviewText
     props.form.nginxPreviewConfirmed = !!selectedConfigText
@@ -1497,14 +1589,13 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
     if (showSuccess) ElMessage.success('Nginx服务可用')
     return true
   } catch (error) {
-    clearNginxCheckState({ clearServerIp: false, preserveConf: true })
+    clearNginxCheckState({ clearServerIp: false, preserveConf: canPreserveOriginalConf })
     ElMessage.error(getErrorMessage(error, 'Nginx服务不可用'))
     return false
   } finally {
     props.form.nginxChecking = false
   }
 }
-
 const validateNginxPortPair = () => {
   if (!props.form?.nginxEnabled) return true
   const frontend = String(props.form.frontendPort || '').trim()
@@ -1677,6 +1768,7 @@ const isFirstSetup = () => {
 }
 
 const initWorkflow = () => {
+  initializingWorkflow.value = true
   resetEntryRoot()
   originalBaseConfig.description = String(props.form?.description || '').trim()
   originalBaseConfig.condaEnvName = String(props.form?.condaEnvName || '').trim()
@@ -1710,24 +1802,18 @@ const initWorkflow = () => {
   props.form.dropOriginalNginxConfig = false
   captureOriginalNginxConfig()
   if (props.form?.nginxEnabled) {
-    props.form.nginxChecked = !!hasText(props.form?.nginxConfPath)
+    restoreSavedNginxConfigFromOptions()
+    props.form.nginxChecked = !!(hasText(props.form?.nginxConfPath) || hasOriginalNginxConfig())
     props.form.nginxExistingConfPath = hasText(props.form?.nginxConfPath) ? String(props.form.nginxConfPath || '').trim() : ''
     props.form.nginxPreviewText = String(props.form?.nginxConfigText || '').trim() || buildNginxPreview()
     props.form.nginxPreviewDraft = props.form.nginxPreviewText
     props.form.nginxPreviewConfirmed = !!hasText(props.form?.nginxConfigText)
     props.form.nginxFrontendPortChecked = hasText(props.form?.frontendPort)
     props.form.nginxBackendPortChecked = hasText(props.form?.backendDeployPort)
-    if (hasText(props.form?.nginxConfPath)) {
-      const exists = Array.isArray(props.form.nginxConfOptions)
-        && props.form.nginxConfOptions.some((item) => String((typeof item === 'string' ? item : (item.value || item.path || '')) || '').trim() === String(props.form.nginxConfPath || '').trim())
-      if (!exists) {
-        props.form.nginxConfOptions = [
-          ...(Array.isArray(props.form.nginxConfOptions) ? props.form.nginxConfOptions : []),
-          { path: String(props.form.nginxConfPath || '').trim(), source: 'existing' },
-        ]
-      }
+    ensureCurrentNginxConfOption(props.form.nginxExistingConfPath || props.form.nginxConfPath)
+    if (isNginxConfigEditable.value) {
+      checkSettingNginxAvailability(false)
     }
-    checkSettingNginxAvailability(false)
   } else {
     props.form.nginxPreviewVisible = false
   }
@@ -1754,6 +1840,9 @@ const initWorkflow = () => {
 
   configuredOnOpen.value = isFullyConfigured()
   currentStep.value = 0
+  nextTick(() => {
+    initializingWorkflow.value = false
+  })
 }
 
 watch(
@@ -1769,6 +1858,7 @@ watch(
         scheduleStepLineUpdate()
       }, 240)
     } else {
+      initializingWorkflow.value = false
       connectorLines.value = []
       stepNodeRefs.value = []
     }
@@ -2258,6 +2348,7 @@ const validateCurrentStep = async () => {
     if (!props.form?.nginxEnabled) {
       return true
     }
+    restoreSavedNginxConfigFromOptions()
     if (!isNginxConfigEditable.value && hasOriginalNginxConfig()) {
       return true
     }
@@ -2359,6 +2450,7 @@ const validateBeforeConfirm = async () => {
     return false
   }
   if (props.form?.nginxEnabled) {
+    restoreSavedNginxConfigFromOptions()
     if (!isNginxConfigEditable.value && hasOriginalNginxConfig()) {
       if (!ensurePortsDistinct()) {
         return false
@@ -2439,6 +2531,7 @@ const goNext = async () => {
     props.form.frontendPort = ''
   }
   if (props.form?.nginxEnabled && !isNginxConfigEditable.value && hasOriginalNginxConfig()) {
+    restoreSavedNginxConfigFromOptions()
     restoreOriginalNginxConfig()
   }
   if (currentStep.value < lastStepIndex) {
