@@ -202,8 +202,13 @@ const projectStore = useProjectStore()
 const terminalStore = useTerminalStore()
 
 const preset = useDashboardPreset({ auth, layout, ui, projectStore })
-const terminal = useDashboardTerminal({ terminalStore, projectStore })
-const dialogs = useDashboardDialogs({
+let dialogs
+const terminal = useDashboardTerminal({
+  terminalStore,
+  projectStore,
+  onCtrlC: (payload) => dialogs?.handleTerminalCtrlC?.(payload),
+})
+dialogs = useDashboardDialogs({
   layout,
   projectStore,
   terminalStore,
@@ -214,6 +219,8 @@ const dialogs = useDashboardDialogs({
   ensureProjectTaskSession: terminal.ensureProjectTaskSession,
   appendSessionLine: terminal.appendSessionLine,
   appendSessionLines: terminal.appendSessionLines,
+  runProjectForegroundInSession: terminal.runProjectForegroundInSession,
+  executeSessionCommand: terminal.executeSessionCommand,
   lockSession: terminal.lockSession,
   unlockSession: terminal.unlockSession,
   canAction: preset.canAction,
@@ -401,3 +408,4 @@ onMounted(async () => {
   scrollToBottom()
 })
 </script>
+

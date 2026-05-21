@@ -1,7 +1,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { terminalApi } from '@/api/terminal'
+import { TERMINAL_WS_PROTOCOL, buildTerminalWsUrl, getTerminalWsToken, terminalApi } from '@/api/terminal'
 import { getErrorMessage } from '@/utils/request'
 
 const parseJson = (text, fallback) => {
@@ -26,22 +26,10 @@ const splitOutput = (text) => {
   return lines
 }
 
-const isSessionMissingError = (error) => {
-  const status = Number(error?.response?.status || 0)
-  const message = getErrorMessage(error, '')
-  if (message.includes('会话不存在')) return true
-  return status === 404
-}
 
-const buildPromptFromSession = (session) => {
-  const cwd = String(session?.cwd || '/root')
-  const host = String(session?.hostLabel || session?.alias || 'wcp')
-  const display = cwd === '/root' ? '~' : (cwd.startsWith('/root/') ? `~${cwd.slice('/root'.length)}` : cwd)
-  return `(base) [root@${host} ${display}]#`
-}
 
 export const useDashboardTerminal = (options) => {
-  const { terminalStore, projectStore } = options
+  const { terminalStore, projectStore, onCtrlC } = options
   const auth = useAuthStore()
 
   const consoleRef = ref()
@@ -55,6 +43,8 @@ export const useDashboardTerminal = (options) => {
     candidatesKey: '',
     at: 0,
   })
+  const commandHistory = ref([])
+  const historyCursor = ref(-1)
 
   const currentUserIdentity = computed(() => getUserIdentity(auth))
 
@@ -123,6 +113,7 @@ export const useDashboardTerminal = (options) => {
     () => {
       refreshSessions()
       commandInput.value = ''
+      resetHistoryCursor()
     },
     { immediate: true },
   )
@@ -170,6 +161,14 @@ export const useDashboardTerminal = (options) => {
     }
   }
 
+  const appendSessionChunk = (sessionId, chunk = '') => {
+    if (!sessionId || !chunk) return
+    terminalStore.appendChunk(String(sessionId), chunk)
+    if (!keepHistoryView.value) {
+      scrollToBottom()
+    }
+  }
+
   const appendSessionLines = (sessionId, lines = []) => {
     if (!sessionId || !Array.isArray(lines) || !lines.length) return
     terminalStore.appendLines(String(sessionId), lines)
@@ -194,30 +193,123 @@ export const useDashboardTerminal = (options) => {
     scrollToBottom()
   }
 
+  const openTerminalSocket = ({ localSessionId, serverIp, alias }) => new Promise((resolve, reject) => {
+    const token = getTerminalWsToken()
+    if (!token) {
+      reject(new Error('\u767b\u5f55\u4ee4\u724c\u4e3a\u7a7a\uff0c\u65e0\u6cd5\u521b\u5efa\u7ec8\u7aef\u8fde\u63a5'))
+      return
+    }
+    const socket = new WebSocket(buildTerminalWsUrl(token), TERMINAL_WS_PROTOCOL)
+    let settled = false
+    const failTimer = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      try { socket.close() } catch {}
+      reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u8d85\u65f6'))
+    }, 10000)
+
+    const sendOpen = () => {
+      socket.send(JSON.stringify({ type: 'open', server_ip: serverIp, alias }))
+    }
+
+    socket.onopen = sendOpen
+    socket.onmessage = (event) => {
+      let payload = null
+      try {
+        payload = JSON.parse(event.data)
+      } catch {
+        appendSessionChunk(localSessionId, String(event.data || ''))
+        return
+      }
+      const type = String(payload?.type || '')
+      const data = payload?.data || {}
+      if (type === 'ready') {
+        window.clearTimeout(failTimer)
+        settled = true
+        terminalStore.setSessionRemoteId(localSessionId, data.session_id || '')
+        terminalStore.setSessionSocket(localSessionId, socket)
+        resolve(socket)
+        return
+      }
+      if (type === 'output') {
+        appendSessionChunk(localSessionId, data.text || '')
+        return
+      }
+      if (type === 'foreground_started') {
+        terminalStore.appendLine(localSessionId, '')
+        terminalStore.appendLine(localSessionId, `\u524d\u53f0\u670d\u52a1\u5df2\u542f\u52a8\uff1aPID=${data.pid || ''}${data.port ? ` \u7aef\u53e3=${data.port}` : ''}`)
+        terminalStore.appendLine(localSessionId, '')
+        projectStore.updateProjectServiceStatus(data.project_id, {
+          service_status: '\u8fd0\u884c\u4e2d',
+          running_port: data.port || '',
+        })
+        return
+      }
+      if (type === 'foreground_pending') {
+        terminalStore.appendLine(localSessionId, '')
+        terminalStore.appendLine(localSessionId, data.message || '\u542f\u52a8\u547d\u4ee4\u5df2\u53d1\u9001')
+        terminalStore.appendLine(localSessionId, '')
+        return
+      }
+      if (type === 'error') {
+        terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38')
+        if (!settled) {
+          window.clearTimeout(failTimer)
+          settled = true
+          reject(new Error(data.message || '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38'))
+        }
+        return
+      }
+      if (type === 'closed') {
+        terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u4f1a\u8bdd\u5df2\u5173\u95ed')
+      }
+    }
+    socket.onerror = () => {
+      if (!settled) {
+        window.clearTimeout(failTimer)
+        settled = true
+        reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u5931\u8d25'))
+      } else {
+        terminalStore.appendLine(localSessionId, '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38')
+      }
+    }
+    socket.onclose = () => {
+      window.clearTimeout(failTimer)
+      terminalStore.removeSessionSocket(localSessionId)
+      if (!settled) {
+        settled = true
+        reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u5df2\u5173\u95ed'))
+      } else {
+        terminalStore.appendLine(localSessionId, '[\u7cfb\u7edf] \u7ec8\u7aef\u8fde\u63a5\u5df2\u5173\u95ed')
+      }
+    }
+  })
+
+  const sendSocketMessage = (sessionId, payload) => {
+    const socket = terminalStore.getSessionSocket(sessionId)
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new Error('\u7ec8\u7aef WebSocket \u672a\u8fde\u63a5')
+    }
+    socket.send(JSON.stringify(payload))
+  }
+
   const createSessionByServer = async (serverIp, baseAlias, hostLabel) => {
     const finalAlias = terminalStore.buildNextAlias(serverIp, baseAlias)
-
-    const resp = await terminalApi.createSession({
-      server_ip: serverIp,
-      alias: finalAlias,
-    })
-
-    const data = resp.data?.data || {}
     const localSessionId = terminalStore.createSessionLocal({
       serverIp,
       alias: finalAlias,
       baseAlias,
       hostLabel: hostLabel || 'wcp',
-      remoteSessionId: data.session_id || '',
-      cwd: data.cwd || '/root',
-      welcomeMessage: data.welcome_message || '连接成功！',
-      prompt: data.prompt || '',
+      remoteSessionId: '',
+      cwd: '/root',
+      welcomeMessage: `\u6b63\u5728\u8fde\u63a5\uff1a${serverIp}`,
+      prompt: '',
     })
-
+    await openTerminalSocket({ localSessionId, serverIp, alias: finalAlias })
     return {
       localSessionId,
       finalAlias,
-      remoteSessionId: data.session_id || '',
+      remoteSessionId: terminalStore.getSession(localSessionId)?.remoteSessionId || '',
     }
   }
 
@@ -343,139 +435,87 @@ export const useDashboardTerminal = (options) => {
     appendTerminal(`[下载] ${activeSessionAlias.value}：请选择具体文件`)
   }
 
+  const pushCommandHistory = (command) => {
+    const value = String(command || '').trim()
+    if (!value) return
+    const list = commandHistory.value.slice()
+    const last = list[list.length - 1]
+    if (last !== value) list.push(value)
+    commandHistory.value = list.slice(-100)
+    historyCursor.value = commandHistory.value.length
+  }
+
+  function resetHistoryCursor() {
+    historyCursor.value = commandHistory.value.length
+  }
+
+  const executeSessionCommand = async (sessionId, rawCommand, options = {}) => {
+    const session = terminalStore.getSession(sessionId)
+    if (!session) throw new Error('\u7ec8\u7aef\u4f1a\u8bdd\u4e0d\u5b58\u5728')
+    const command = String(rawCommand || '').trim()
+    if (!command) throw new Error('\u547d\u4ee4\u4e0d\u80fd\u4e3a\u7a7a')
+    const socket = terminalStore.getSessionSocket(session.id)
+    if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('\u7ec8\u7aef WebSocket \u672a\u8fde\u63a5')
+
+    sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
+    return { stdout: '', stderr: '', exit_code: 0 }
+  }
+
+  const runProjectForegroundInSession = async (sessionId, prepare = {}) => {
+    const command = String(prepare.command || '').trim()
+    if (!command) throw new Error('\u6682\u65e0\u914d\u7f6e\u542f\u52a8\u547d\u4ee4')
+    sendSocketMessage(sessionId, {
+      type: 'run_foreground',
+      project_id: prepare.project_id,
+      work_dir: prepare.work_dir || '',
+      conda_env_name: prepare.conda_env_name || '',
+      command,
+      port: prepare.port || '',
+    })
+  }
+
   const executeCommand = async (rawCommand = commandInput.value) => {
     const session = activeSession.value
     if (!session) {
-      ElMessage.warning('请先创建会话')
+      ElMessage.warning('\u8bf7\u5148\u521b\u5efa\u4f1a\u8bdd')
       return
     }
 
     if (session.locked) {
-      ElMessage.warning(session.lockReason || '当前会话任务执行中，暂不可输入命令')
+      ElMessage.warning(session.lockReason || '\u5f53\u524d\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u6682\u4e0d\u53ef\u8f93\u5165\u547d\u4ee4')
       return
     }
 
     const command = String(rawCommand || '').trim()
     if (!command) {
-      ElMessage.warning('请输入命令')
+      ElMessage.warning('\u8bf7\u8f93\u5165\u547d\u4ee4')
       return
     }
 
+    pushCommandHistory(command)
+
     if (command.toLowerCase() === 'clear') {
-      const prompt = buildPromptFromSession(session)
-      terminalStore.clearSession(session.id, prompt)
+      terminalStore.clearSession(session.id, '')
       commandInput.value = ''
+      resetHistoryCursor()
       keepHistoryView.value = false
       scrollToBottom()
       return
     }
 
-    const recreateRemoteSession = async (targetSession) => {
-      const serverIp = String(targetSession?.serverIp || '').trim()
-      const alias = String(targetSession?.alias || targetSession?.baseAlias || 'session').trim()
-      if (!serverIp) {
-        throw new Error('当前会话缺少服务器IP，无法自动重连')
-      }
-      if (!alias) {
-        throw new Error('当前会话缺少别名，无法自动重连')
-      }
-
-      const reconnectResp = await terminalApi.createSession({
-        server_ip: serverIp,
-        alias,
-      })
-      const reconnectData = reconnectResp.data?.data || {}
-      const remoteSessionId = String(reconnectData.session_id || '').trim()
-      if (!remoteSessionId) {
-        throw new Error('自动重连失败：后端未返回会话ID')
-      }
-
-      terminalStore.setSessionRemoteId(targetSession.id, remoteSessionId)
-      if (reconnectData.cwd) {
-        terminalStore.setSessionCwd(targetSession.id, reconnectData.cwd)
-      }
-      return remoteSessionId
-    }
-
-    const applyExecuteResult = (sessionId, result) => {
-      const stdoutLines = splitOutput(result.stdout)
-      const stderrLines = splitOutput(result.stderr)
-
-      if (stdoutLines.length) terminalStore.appendLines(sessionId, stdoutLines)
-      if (stderrLines.length) terminalStore.appendLines(sessionId, stderrLines)
-
-      if (result.cwd) terminalStore.setSessionCwd(sessionId, result.cwd)
-
-      const nextPrompt = result.prompt_after || buildPromptFromSession(terminalStore.getSession(sessionId))
-      terminalStore.appendLine(sessionId, nextPrompt)
-    }
-
-    let remoteSessionId = String(session.remoteSessionId || '').trim()
-    if (!remoteSessionId) {
-      try {
-        terminalStore.appendLine(session.id, '[系统] 检测到会话未绑定远程ID，正在自动重连...')
-        remoteSessionId = await recreateRemoteSession(session)
-        terminalStore.appendLine(session.id, `[系统] 会话已自动重连：${session.alias} (${session.serverIp})`)
-      } catch (error) {
-        ElMessage.error(getErrorMessage(error, '自动重连失败，请重新创建会话'))
-        if (!keepHistoryView.value) {
-          scrollToBottom()
-        }
-        return
-      }
-    }
-
-    const promptBefore = buildPromptFromSession(session)
-    terminalStore.appendLine(session.id, `${promptBefore} ${command}`)
-
     try {
-      const resp = await terminalApi.execute({
-        session_id: remoteSessionId,
-        command,
-      })
-      const result = resp.data?.data || {}
-      applyExecuteResult(session.id, result)
-
+      sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
       commandInput.value = ''
+      resetHistoryCursor()
       if (!keepHistoryView.value) {
         scrollToBottom()
       }
     } catch (error) {
-      if (isSessionMissingError(error)) {
-        try {
-          terminalStore.appendLine(session.id, '[系统] 检测到远程会话已失效，正在自动重连...')
-          remoteSessionId = await recreateRemoteSession(session)
-          terminalStore.appendLine(session.id, `[系统] 会话已自动重连：${session.alias} (${session.serverIp})`)
-
-          const retryResp = await terminalApi.execute({
-            session_id: remoteSessionId,
-            command,
-          })
-          const retryResult = retryResp.data?.data || {}
-          applyExecuteResult(session.id, retryResult)
-          commandInput.value = ''
-          if (!keepHistoryView.value) {
-            scrollToBottom()
-          }
-          return
-        } catch (retryError) {
-          const retryMsg = getErrorMessage(retryError, '自动重连后重试失败')
-          terminalStore.appendLine(session.id, retryMsg)
-          terminalStore.appendLine(session.id, buildPromptFromSession(terminalStore.getSession(session.id)))
-          ElMessage.error(retryMsg)
-          commandInput.value = ''
-          if (!keepHistoryView.value) {
-            scrollToBottom()
-          }
-          return
-        }
-      }
-
-      const msg = getErrorMessage(error, '命令执行失败')
+      const msg = getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25')
       terminalStore.appendLine(session.id, msg)
-      terminalStore.appendLine(session.id, buildPromptFromSession(terminalStore.getSession(session.id)))
       ElMessage.error(msg)
       commandInput.value = ''
+      resetHistoryCursor()
       if (!keepHistoryView.value) {
         scrollToBottom()
       }
@@ -507,24 +547,21 @@ export const useDashboardTerminal = (options) => {
         lastTabState.value = {
           sessionId: session.id,
           rawCommand: completedCommand,
-          candidatesKey: '',
+          candidatesKey,
           at: now,
         }
-      } else if (candidates.length > 1) {
-        const shouldShowCandidates =
-          lastTabState.value.sessionId === session.id
+      } else if (candidates.length) {
+        const sameTap = lastTabState.value.sessionId === session.id
           && lastTabState.value.rawCommand === rawCommand
           && lastTabState.value.candidatesKey === candidatesKey
-          && now - Number(lastTabState.value.at || 0) <= 1500
-
-        if (shouldShowCandidates) {
-          terminalStore.appendLine(session.id, `候选项（${candidates.length}）：${candidates.join('    ')}`)
-          terminalStore.appendLine(session.id, terminalStore.buildPrompt(terminalStore.getSession(session.id)))
+          && now - lastTabState.value.at < 1500
+        if (sameTap) {
+          terminalStore.appendLine(session.id, candidates.join('  '))
           lastTabState.value = {
             sessionId: session.id,
             rawCommand,
-            candidatesKey: '',
-            at: now,
+            candidatesKey,
+            at: 0,
           }
         } else {
           lastTabState.value = {
@@ -546,19 +583,61 @@ export const useDashboardTerminal = (options) => {
         scrollToBottom()
       }
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, '自动补全失败'))
+      ElMessage.warning(getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25'))
     } finally {
       tabCompletionBusy.value = false
     }
   }
 
   const handleConsoleShortcut = (event) => {
+    if (event.key === 'ArrowUp') {
+      const session = activeSession.value
+      if (!session || session.locked || !commandHistory.value.length) return
+      event.preventDefault()
+      const nextCursor = historyCursor.value <= 0 ? 0 : historyCursor.value - 1
+      historyCursor.value = nextCursor
+      commandInput.value = commandHistory.value[nextCursor] || ''
+      return
+    }
+
+    if (event.key === 'ArrowDown') {
+      const session = activeSession.value
+      if (!session || session.locked || !commandHistory.value.length) return
+      event.preventDefault()
+      const nextCursor = historyCursor.value + 1
+      if (nextCursor >= commandHistory.value.length) {
+        historyCursor.value = commandHistory.value.length
+        commandInput.value = ''
+      } else {
+        historyCursor.value = nextCursor
+        commandInput.value = commandHistory.value[nextCursor] || ''
+      }
+      return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+      event.preventDefault()
+      const session = activeSession.value
+      if (!session || session.locked) return
+      try {
+        sendSocketMessage(session.id, { type: 'input', text: '\u0003' })
+      } catch {
+        terminalStore.appendLine(session.id, '^C')
+      }
+      if (typeof onCtrlC === 'function') {
+        onCtrlC({ session, appendLine: (line) => terminalStore.appendLine(session.id, line), skipBackendStop: true })
+      }
+      if (!keepHistoryView.value) {
+        scrollToBottom()
+      }
+      return
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
       event.preventDefault()
       const session = activeSession.value
       if (!session || session.locked) return
-      const prompt = buildPromptFromSession(session)
-      terminalStore.clearSession(session.id, prompt)
+      terminalStore.clearSession(session.id, '')
       keepHistoryView.value = false
       scrollToBottom()
     }
@@ -574,6 +653,7 @@ export const useDashboardTerminal = (options) => {
     activeSessionLockReason,
     appendTerminal,
     appendSessionLine,
+    appendSessionChunk,
     appendSessionLines,
     lockSession,
     unlockSession,
@@ -592,9 +672,12 @@ export const useDashboardTerminal = (options) => {
     downloadFile,
     commandInput,
     executeCommand,
+    executeSessionCommand,
+    runProjectForegroundInSession,
     handleCommandTabComplete,
     handleConsoleShortcut,
     refreshSessions,
     onConsoleScroll,
   }
 }
+

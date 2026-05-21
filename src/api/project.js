@@ -190,6 +190,12 @@ export const projectApi = {
       params: { project_id: projectId },
     })
   },
+  prepareStartForeground(projectId) {
+    return request.get('/pspm/projects/start-foreground/prepare', { params: { project_id: projectId } })
+  },
+  finalizeStartForeground(payload) {
+    return request.put('/pspm/projects/start-foreground/finalize', payload)
+  },
   startForeground(projectId) {
     return request.put('/pspm/projects/start-foreground', null, { params: { project_id: projectId } })
   },
@@ -215,3 +221,4 @@ export const projectApi = {
     })
   },
 }
+

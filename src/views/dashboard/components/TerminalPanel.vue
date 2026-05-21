@@ -37,7 +37,12 @@
       @keydown="emit('terminal-shortcut', $event)"
       @scroll="emit('console-scroll', $event)"
     >
-      <div v-for="(line, idx) in terminalLines" :key="idx">{{ line }}</div>
+      <div
+        v-for="(line, idx) in terminalLines"
+        :key="idx"
+        class="console-line"
+        :class="{ 'is-empty': !String(line || '').length }"
+      >{{ String(line || '').length ? line : '\u00A0' }}</div>
     </div>
 
     <div class="input-row">
@@ -46,6 +51,9 @@
         :disabled="activeSessionLocked"
         :placeholder="activeSessionLocked ? (activeSessionLockReason || '任务执行中，暂不可输入命令') : '输入命令...'"
         @keydown.tab.prevent="emit('command-tab-complete', $event)"
+        @keydown.up.prevent="emit('terminal-shortcut', $event)"
+        @keydown.down.prevent="emit('terminal-shortcut', $event)"
+        @keydown.ctrl.c.prevent="emit('terminal-shortcut', $event)"
         @keydown.ctrl.l.prevent="emit('terminal-shortcut', $event)"
         @keyup.enter="emit('execute')"
       />
@@ -177,6 +185,15 @@ onMounted(() => {
   white-space: pre-wrap;
   word-break: break-word;
   outline: none;
+}
+
+.console-line {
+  min-height: 18px;
+  margin: 0 0 2px;
+}
+
+.console-line.is-empty {
+  min-height: 18px;
 }
 
 .input-row {

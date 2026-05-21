@@ -78,7 +78,7 @@ export const useCreateProjectDialog = (options) => {
   const getCreateFrontendRoot = () => {
     const username = getCreateUsername()
     const projectName = String(projectCreateForm.name || '').trim()
-    const baseDir = isCreateRootRole() ? '/root/frontend_dist' : `/home/${username}/frontend_dist`
+    const baseDir = '/data/frontend_dist'
     return projectName ? `${baseDir}/${projectName}` : baseDir
   }
   const buildCreateNginxPreview = () => {

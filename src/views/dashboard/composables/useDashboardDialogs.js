@@ -1,4 +1,4 @@
-﻿import { reactive, ref, computed, nextTick } from 'vue'
+import { reactive, ref, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { appConfig } from '@/config/app/app.config'
 import { projectApi } from '@/api/project'
@@ -37,6 +37,7 @@ export const useDashboardDialogs = (options) => {
     ensureProjectTaskSession,
     appendSessionLine,
     appendSessionLines,
+    runProjectForegroundInSession,
     lockSession,
     unlockSession,
     canAction,
@@ -52,6 +53,7 @@ export const useDashboardDialogs = (options) => {
   const projectLogDialogVisible = ref(false)
   const projectLogLoading = ref(false)
   const projectLogData = ref({ project_id: 0, project_name: '', total: 0, data: [] })
+  const foregroundProjectBySessionId = reactive({})
 
   const projectDialogVisible = ref(false)
   const syncProjectDialogVisible = ref(false)
@@ -741,6 +743,102 @@ export const useDashboardDialogs = (options) => {
     }
   }
 
+  const RUNTIME_TEXT = {
+    noSteps: '暂无执行步骤',
+    taskRunningSuffix: '中，请稍候',
+    connectTarget: '连接目标服务器',
+    session: '会话',
+    alreadyRunning: '项目已在运行中',
+    startForeground: '前台启动',
+    startBackground: '后台启动',
+    deployStart: '部署启动',
+    stopService: '停止服务',
+    startForegroundOk: '前台启动成功',
+    startBackgroundOk: '后台启动成功',
+    deployStartOk: '部署启动成功',
+    stopServiceOk: '停止服务成功',
+    startForegroundFail: '前台启动失败',
+    startBackgroundFail: '后台启动失败',
+    deployStartFail: '部署启动失败',
+    stopServiceFail: '停止服务失败',
+    stoppedAlready: '项目已停止',
+  }
+
+  const appendRuntimeTerminalSteps = async (sessionId, project, data, title) => {
+    if (!sessionId) return
+    const steps = Array.isArray(data?.terminal_steps) ? data.terminal_steps : []
+    appendSessionLine(sessionId, `${title}：${project.name}`)
+    if (!steps.length) {
+      appendSessionLine(sessionId, String(data?.message || RUNTIME_TEXT.noSteps))
+      return
+    }
+    for (const item of steps) {
+      const type = String(item?.type || '').trim()
+      const content = String(item?.text || '').trim()
+      if (!content) continue
+      if (type === 'command') {
+        appendSessionLine(sessionId, `$ ${content}`)
+      } else {
+        String(content).split(/\r?\n/).forEach((line) => appendSessionLine(sessionId, line))
+      }
+    }
+    if (data?.message) appendSessionLine(sessionId, String(data.message))
+  }
+
+  const runProjectRuntimeAction = async ({ project, request, title, successFallback, runningStatus }) => {
+    const serverIp = String(project?.serverIp || '').trim()
+    let sessionInfo = null
+    if (typeof ensureProjectTaskSession === 'function' && serverIp) {
+      sessionInfo = await ensureProjectTaskSession(serverIp, 'runtime')
+      lockSession(sessionInfo.localSessionId, `${title} ${project.name} ${RUNTIME_TEXT.taskRunningSuffix}`)
+      appendSessionLine(sessionInfo.localSessionId, `${RUNTIME_TEXT.connectTarget}：${serverIp}`)
+    }
+    try {
+      const resp = await request()
+      const data = resp.data?.data || {}
+      const msg = String(resp.data?.message || data.message || successFallback)
+      if (runningStatus) projectStore.setProjectStatus(project.id, runningStatus)
+      if (sessionInfo?.localSessionId) {
+        await appendRuntimeTerminalSteps(sessionInfo.localSessionId, project, data, title)
+        if (data?.run_in_background === false && runningStatus === PROJECT_RUNNING_TEXT) {
+          foregroundProjectBySessionId[String(sessionInfo.localSessionId)] = { id: project.id, name: project.name }
+        }
+      } else {
+        appendTerminal(`[${RUNTIME_TEXT.session}:${activeSessionAlias.value}] ${project.name} ${msg}`)
+      }
+      ElMessage.success(msg)
+      await projectStore.loadBundle()
+    } finally {
+      if (sessionInfo?.localSessionId) unlockSession(sessionInfo.localSessionId)
+    }
+  }
+
+  const runProjectForegroundAction = async (project) => {
+    const serverIp = String(project?.serverIp || '').trim()
+    let sessionInfo = null
+    if (typeof ensureProjectTaskSession === 'function' && serverIp) {
+      sessionInfo = await ensureProjectTaskSession(serverIp, 'foreground')
+    }
+    if (!sessionInfo?.localSessionId) throw new Error('\u65e0\u6cd5\u521b\u5efa\u524d\u53f0\u542f\u52a8\u7ec8\u7aef\u4f1a\u8bdd')
+
+    try {
+      const prepareResp = await projectApi.prepareStartForeground(project.id)
+      const prepare = prepareResp.data?.data || {}
+      if (!prepare.command) throw new Error('\u6682\u65e0\u914d\u7f6e\u542f\u52a8\u547d\u4ee4')
+      if (typeof runProjectForegroundInSession !== 'function') throw new Error('\u7ec8\u7aef\u524d\u53f0\u542f\u52a8\u80fd\u529b\u672a\u521d\u59cb\u5316')
+      await runProjectForegroundInSession(sessionInfo.localSessionId, prepare)
+      foregroundProjectBySessionId[String(sessionInfo.localSessionId)] = { id: project.id, name: project.name }
+      projectStore.updateProjectServiceStatus(project.id, {
+        service_status: PROJECT_RUNNING_TEXT,
+        running_port: prepare.port || '',
+      })
+      ElMessage.success('\u524d\u53f0\u542f\u52a8\u547d\u4ee4\u5df2\u53d1\u9001\uff0c\u5b9e\u9645\u8f93\u51fa\u8bf7\u67e5\u770b\u53f3\u4fa7\u7ec8\u7aef')
+    } catch (error) {
+      const msg = getErrorMessage(error, RUNTIME_TEXT.startForegroundFail)
+      appendSessionLine(sessionInfo.localSessionId, msg)
+      ElMessage.error(msg)
+    }
+  }
   const handleProjectAction = async (actionCode, project) => {
     if (!canAction('projects', actionCode)) return
     const projectStatus = String(project?.status || '').trim()
@@ -752,68 +850,66 @@ export const useDashboardDialogs = (options) => {
 
     if (actionCode === 'start_fg') {
       if (project.status === PROJECT_RUNNING_TEXT) {
-        ElMessage.warning('项目已在运行中')
+        ElMessage.warning(RUNTIME_TEXT.alreadyRunning)
         return
       }
       try {
-        const resp = await projectApi.startForeground(project.id)
-        const msg = String(resp.data?.message || '前台启动成功')
-        projectStore.setProjectStatus(project.id, PROJECT_RUNNING_TEXT)
-        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
-        ElMessage.success(msg)
-        await projectStore.loadBundle()
+        await runProjectForegroundAction(project)
       } catch (error) {
-        ElMessage.error(getErrorMessage(error, '前台启动失败'))
+        ElMessage.error(getErrorMessage(error, RUNTIME_TEXT.startForegroundFail))
       }
       return
     }
 
     if (actionCode === 'start_bg') {
       if (project.status === PROJECT_RUNNING_TEXT) {
-        ElMessage.warning('项目已在运行中')
+        ElMessage.warning(RUNTIME_TEXT.alreadyRunning)
         return
       }
       try {
-        const resp = await projectApi.startBackground(project.id)
-        const msg = String(resp.data?.message || '后台启动成功')
-        projectStore.setProjectStatus(project.id, PROJECT_RUNNING_TEXT)
-        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
-        ElMessage.success(msg)
-        await projectStore.loadBundle()
+        await runProjectRuntimeAction({
+          project,
+          request: () => projectApi.startBackground(project.id),
+          title: RUNTIME_TEXT.startBackground,
+          successFallback: RUNTIME_TEXT.startBackgroundOk,
+          runningStatus: PROJECT_RUNNING_TEXT,
+        })
       } catch (error) {
-        ElMessage.error(getErrorMessage(error, '后台启动失败'))
+        ElMessage.error(getErrorMessage(error, RUNTIME_TEXT.startBackgroundFail))
       }
       return
     }
 
     if (actionCode === 'deploy_start') {
       try {
-        const resp = await projectApi.deployStart(project.id)
-        const msg = String(resp.data?.message || '部署启动成功')
-        projectStore.setProjectStatus(project.id, PROJECT_RUNNING_TEXT)
-        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
-        ElMessage.success(msg)
-        await projectStore.loadBundle()
+        await runProjectRuntimeAction({
+          project,
+          request: () => projectApi.deployStart(project.id),
+          title: RUNTIME_TEXT.deployStart,
+          successFallback: RUNTIME_TEXT.deployStartOk,
+          runningStatus: PROJECT_RUNNING_TEXT,
+        })
       } catch (error) {
-        ElMessage.error(getErrorMessage(error, '部署启动失败'))
+        ElMessage.error(getErrorMessage(error, RUNTIME_TEXT.deployStartFail))
       }
       return
     }
 
     if (actionCode === 'stop') {
       if (project.status === PROJECT_STOPPED_TEXT) {
-        ElMessage.warning('项目已停止')
+        ElMessage.warning(RUNTIME_TEXT.stoppedAlready)
         return
       }
       try {
-        const resp = await projectApi.stopProject(project.id)
-        const msg = String(resp.data?.message || '停止服务成功')
-        projectStore.setProjectStatus(project.id, PROJECT_STOPPED_TEXT)
-        appendTerminal('[会话:' + activeSessionAlias.value + '] ' + project.name + ' ' + msg)
-        ElMessage.success(msg)
-        await projectStore.loadBundle()
+        await runProjectRuntimeAction({
+          project,
+          request: () => projectApi.stopProject(project.id),
+          title: RUNTIME_TEXT.stopService,
+          successFallback: RUNTIME_TEXT.stopServiceOk,
+          runningStatus: PROJECT_STOPPED_TEXT,
+        })
       } catch (error) {
-        ElMessage.error(getErrorMessage(error, '停止服务失败'))
+        ElMessage.error(getErrorMessage(error, RUNTIME_TEXT.stopServiceFail))
       }
       return
     }
@@ -850,6 +946,29 @@ export const useDashboardDialogs = (options) => {
 
     if (actionCode === 'delete') {
       await deleteProject(project)
+    }
+  }
+
+  const handleTerminalCtrlC = async ({ session, appendLine } = {}) => {
+    const sessionId = String(session?.id || '')
+    const target = foregroundProjectBySessionId[sessionId]
+    if (!target?.id) {
+      if (typeof appendLine === 'function') appendLine('当前会话没有可停止的前台服务')
+      return
+    }
+    try {
+      if (typeof appendLine === 'function') appendLine(`正在停止 ${target.name}...`)
+      const resp = await projectApi.stopProject(target.id)
+      const data = resp.data?.data || {}
+      const msg = String(resp.data?.message || data.message || RUNTIME_TEXT.stopServiceOk)
+      if (typeof appendLine === 'function') appendLine(msg)
+      delete foregroundProjectBySessionId[sessionId]
+      projectStore.setProjectStatus(target.id, PROJECT_STOPPED_TEXT)
+      await projectStore.loadBundle()
+    } catch (error) {
+      const msg = getErrorMessage(error, RUNTIME_TEXT.stopServiceFail)
+      if (typeof appendLine === 'function') appendLine(msg)
+      ElMessage.error(msg)
     }
   }
 
@@ -912,6 +1031,7 @@ export const useDashboardDialogs = (options) => {
     handleProjectAction,
     checkProjectHealth,
     checkProjectService,
+    handleTerminalCtrlC,
     serverAddUserDialogVisible,
     serverDeleteUserDialogVisible,
     serverAddUserForm,
@@ -927,3 +1047,6 @@ export const useDashboardDialogs = (options) => {
     confirmDeleteServerUser,
   }
 }
+
+
+

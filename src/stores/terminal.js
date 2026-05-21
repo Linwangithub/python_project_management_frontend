@@ -1,4 +1,4 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 const STORAGE_PREFIX = 'pspm_terminal_state'
@@ -34,7 +34,8 @@ const formatPromptPath = (path) => {
 const buildPrompt = (session) => {
   const host = session.hostLabel || session.alias || 'wcp'
   const cwd = formatPromptPath(session.cwd || HOME_DIR)
-  return `(base) [root@${host} ${cwd}]#`
+  const envName = session.condaEnvName || 'base'
+  return `(${envName}) [root@${host} ${cwd}]#`
 }
 
 const createSessionRecord = ({
@@ -47,6 +48,7 @@ const createSessionRecord = ({
   cwd = HOME_DIR,
   locked = false,
   lockReason = '',
+  condaEnvName = 'base',
 }) => ({
   id: String(id),
   remoteSessionId: String(remoteSessionId || ''),
@@ -57,6 +59,7 @@ const createSessionRecord = ({
   cwd: String(cwd || HOME_DIR),
   locked: !!locked,
   lockReason: String(lockReason || ''),
+  condaEnvName: String(condaEnvName || 'base'),
   lines: [],
 })
 
@@ -72,6 +75,7 @@ const normalizeSession = (session) => {
     cwd: safe.cwd || HOME_DIR,
     locked: !!safe.locked,
     lockReason: safe.lockReason || '',
+    condaEnvName: safe.condaEnvName || 'base',
   })
   normalized.lines = Array.isArray(safe.lines) ? safe.lines.map((line) => String(line)) : []
   return normalized
@@ -80,6 +84,7 @@ const normalizeSession = (session) => {
 export const useTerminalStore = defineStore('terminal', () => {
   const sessions = ref([])
   const activeSessionId = ref('')
+  const sockets = new Map()
   const storageKey = ref(storageKeyFor(getCurrentUserIdentity()))
 
   const persist = () => {
@@ -99,10 +104,21 @@ export const useTerminalStore = defineStore('terminal', () => {
     )
   }
 
+  const closeAllSockets = () => {
+    sockets.forEach((socket) => {
+      try {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'close' }))
+        socket.close()
+      } catch {}
+    })
+    sockets.clear()
+  }
+
   const hydrate = (identity) => {
     storageKey.value = storageKeyFor(identity || getCurrentUserIdentity())
     if (!isClient()) return
 
+    closeAllSockets()
     const raw = window.localStorage.getItem(storageKey.value)
     if (!raw) {
       sessions.value = []
@@ -158,6 +174,23 @@ export const useTerminalStore = defineStore('terminal', () => {
     persist()
   }
 
+  const appendChunk = (sessionId, chunk) => {
+    const session = findSession(sessionId)
+    if (!session) return
+    const text = String(chunk || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    if (!text) return
+    const parts = text.split('\n')
+    if (!session.lines.length) session.lines.push('')
+    session.lines[session.lines.length - 1] = `${session.lines[session.lines.length - 1] || ''}${parts[0] || ''}`
+    for (let i = 1; i < parts.length; i += 1) {
+      session.lines.push(parts[i] || '')
+    }
+    if (session.lines.length > 2000) {
+      session.lines = session.lines.slice(-2000)
+    }
+    persist()
+  }
+
   const appendLines = (sessionId, lines) => {
     const session = findSession(sessionId)
     if (!session) return
@@ -185,11 +218,33 @@ export const useTerminalStore = defineStore('terminal', () => {
     persist()
   }
 
+  const setSessionCondaEnv = (sessionId, condaEnvName = 'base') => {
+    const session = findSession(sessionId)
+    if (!session) return
+    session.condaEnvName = String(condaEnvName || 'base')
+    persist()
+  }
+
   const setSessionRemoteId = (sessionId, remoteSessionId) => {
     const session = findSession(sessionId)
     if (!session) return
     session.remoteSessionId = String(remoteSessionId || '')
     persist()
+  }
+
+  const setSessionSocket = (sessionId, socket) => {
+    const key = String(sessionId || '')
+    if (!key) return
+    sockets.set(key, socket)
+  }
+
+  const getSessionSocket = (sessionId) => sockets.get(String(sessionId || '')) || null
+
+  const removeSessionSocket = (sessionId) => {
+    const key = String(sessionId || '')
+    const socket = sockets.get(key)
+    sockets.delete(key)
+    return socket || null
   }
 
   const clearSession = (sessionId, promptText = '') => {
@@ -231,6 +286,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       baseAlias: finalBaseAlias,
       hostLabel: hostLabel || finalAlias,
       cwd,
+      condaEnvName: 'base',
     })
 
     const lines = []
@@ -265,6 +321,12 @@ export const useTerminalStore = defineStore('terminal', () => {
     const index = sessions.value.findIndex((item) => item.id === targetId)
     if (index === -1) return false
 
+    const socket = removeSessionSocket(targetId)
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'close' }))
+      socket.close()
+    }
+
     sessions.value.splice(index, 1)
 
     if (activeSessionId.value === targetId) {
@@ -277,6 +339,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   const reset = () => {
+    closeAllSockets()
     sessions.value = []
     activeSessionId.value = ''
     persist()
@@ -290,11 +353,16 @@ export const useTerminalStore = defineStore('terminal', () => {
     getActiveSession,
     setActiveSession,
     appendLine,
+    appendChunk,
     appendLines,
     replaceLines,
     appendCurrentLog,
     setSessionCwd,
+    setSessionCondaEnv,
     setSessionRemoteId,
+    setSessionSocket,
+    getSessionSocket,
+    removeSessionSocket,
     clearSession,
     createSessionLocal,
     createSiblingSessionLocal,

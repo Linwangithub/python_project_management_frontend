@@ -1395,7 +1395,7 @@ const getFrontendRoot = () => {
   if (existing) return existing
   const username = String(props.form?.currentUsername || 'root').trim() || 'root'
   const role = String(props.form?.currentRole || 'user').trim()
-  const baseDir = role === 'root' ? '/root/frontend_dist' : `/home/${username}/frontend_dist`
+  const baseDir = '/data/frontend_dist'
   return projectName ? `${baseDir}/${projectName}` : baseDir
 }
 
