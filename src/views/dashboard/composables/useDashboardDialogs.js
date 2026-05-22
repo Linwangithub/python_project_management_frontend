@@ -767,9 +767,19 @@ export const useDashboardDialogs = (options) => {
   const appendRuntimeTerminalSteps = async (sessionId, project, data, title) => {
     if (!sessionId) return
     const steps = Array.isArray(data?.terminal_steps) ? data.terminal_steps : []
+    const visibleLines = []
+    const appendVisibleLine = (line) => {
+      const value = String(line || '').trim()
+      if (!value) return
+      if (/^PSPM_[A-Z0-9_]+=/.test(value)) return
+      if (visibleLines[visibleLines.length - 1] === value) return
+      visibleLines.push(value)
+      appendSessionLine(sessionId, value)
+    }
+
     appendSessionLine(sessionId, `${title}：${project.name}`)
     if (!steps.length) {
-      appendSessionLine(sessionId, String(data?.message || RUNTIME_TEXT.noSteps))
+      appendVisibleLine(data?.message || RUNTIME_TEXT.noSteps)
       return
     }
     for (const item of steps) {
@@ -777,12 +787,12 @@ export const useDashboardDialogs = (options) => {
       const content = String(item?.text || '').trim()
       if (!content) continue
       if (type === 'command') {
-        appendSessionLine(sessionId, `$ ${content}`)
+        appendVisibleLine(`$ ${content}`)
       } else {
-        String(content).split(/\r?\n/).forEach((line) => appendSessionLine(sessionId, line))
+        String(content).split(/\r?\n/).forEach((line) => appendVisibleLine(line))
       }
     }
-    if (data?.message) appendSessionLine(sessionId, String(data.message))
+    if (data?.message) appendVisibleLine(data.message)
   }
 
   const runProjectRuntimeAction = async ({ project, request, title, successFallback, runningStatus }) => {
@@ -791,7 +801,6 @@ export const useDashboardDialogs = (options) => {
     if (typeof ensureProjectTaskSession === 'function' && serverIp) {
       sessionInfo = await ensureProjectTaskSession(serverIp, 'runtime')
       lockSession(sessionInfo.localSessionId, `${title} ${project.name} ${RUNTIME_TEXT.taskRunningSuffix}`)
-      appendSessionLine(sessionInfo.localSessionId, `${RUNTIME_TEXT.connectTarget}：${serverIp}`)
     }
     try {
       const resp = await request()
@@ -945,11 +954,13 @@ export const useDashboardDialogs = (options) => {
     }
   }
 
-  const handleTerminalCtrlC = async ({ session, appendLine } = {}) => {
+  const getForegroundProjectBySessionId = (sessionId) => foregroundProjectBySessionId[String(sessionId || '')] || null
+
+  const handleTerminalCtrlC = async ({ session, appendLine, onStopped } = {}) => {
     const sessionId = String(session?.id || '')
     const target = foregroundProjectBySessionId[sessionId]
     if (!target?.id) {
-      if (typeof appendLine === 'function') appendLine('当前会话没有可停止的前台服务')
+      if (typeof appendLine === 'function') appendLine('当前会话没有绑定前台启动服务')
       return
     }
     try {
@@ -959,6 +970,7 @@ export const useDashboardDialogs = (options) => {
       const msg = String(resp.data?.message || data.message || RUNTIME_TEXT.stopServiceOk)
       if (typeof appendLine === 'function') appendLine(msg)
       delete foregroundProjectBySessionId[sessionId]
+      if (typeof onStopped === 'function') onStopped(target)
       projectStore.setProjectStatus(target.id, PROJECT_STOPPED_TEXT)
       await projectStore.loadBundle()
     } catch (error) {
@@ -967,6 +979,7 @@ export const useDashboardDialogs = (options) => {
       ElMessage.error(msg)
     }
   }
+
 
   return {
     selectedProject,
@@ -1027,6 +1040,7 @@ export const useDashboardDialogs = (options) => {
     handleProjectAction,
     checkProjectHealth,
     checkProjectService,
+    getForegroundProjectBySessionId,
     handleTerminalCtrlC,
     serverAddUserDialogVisible,
     serverDeleteUserDialogVisible,

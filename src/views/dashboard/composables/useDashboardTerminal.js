@@ -1,7 +1,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { TERMINAL_WS_PROTOCOL, buildTerminalWsUrl, getTerminalWsToken, terminalApi } from '@/api/terminal'
+import { TERMINAL_WS_PROTOCOL, buildTerminalDirectDownloadUrl, buildTerminalWsUrl, getTerminalWsToken, terminalApi } from '@/api/terminal'
 import { getErrorMessage } from '@/utils/request'
 
 const parseJson = (text, fallback) => {
@@ -29,12 +29,21 @@ const splitOutput = (text) => {
 
 
 export const useDashboardTerminal = (options) => {
-  const { terminalStore, projectStore, onCtrlC } = options
+  const { terminalStore, projectStore, onCtrlC, getForegroundProjectBySessionId } = options
   const auth = useAuthStore()
 
   const consoleRef = ref()
   const commandInput = ref('')
   const sessionDialogVisible = ref(false)
+  const downloadDialogVisible = ref(false)
+  const downloadDialogLoading = ref(false)
+  const downloadPathOptions = ref([])
+  const downloadSelectedPath = ref('')
+  const downloadPathCascaderValue = ref([])
+  const downloadCurrentPath = ref('')
+  const downloadRootPath = ref('')
+  const downloadParentPath = ref('')
+  const downloadCanGoParent = ref(false)
   const tabCompletionBusy = ref(false)
   const keepHistoryView = ref(false)
   const lastTabState = ref({
@@ -203,6 +212,47 @@ export const useDashboardTerminal = (options) => {
     scrollToBottom()
   }
 
+  const applyTabCompletionResult = (sessionId, data = {}) => {
+    const session = terminalStore.getSession(sessionId)
+    if (!session) return
+
+    const requestedCommand = String(data.requested_command ?? data.original_command ?? commandInput.value ?? '')
+    const currentCommand = String(commandInput.value || '')
+    if (requestedCommand && currentCommand !== requestedCommand) {
+      return
+    }
+
+    const completedCommand = String(data.completed_command || requestedCommand)
+    const candidates = Array.isArray(data.candidates) ? data.candidates : []
+    const now = Date.now()
+    const candidatesKey = candidates.join('\u0001')
+
+    if (completedCommand !== requestedCommand) {
+      commandInput.value = completedCommand
+      lastTabState.value = {
+        sessionId,
+        rawCommand: completedCommand,
+        candidatesKey,
+        at: now,
+      }
+    } else if (candidates.length) {
+      const sameTap = lastTabState.value.sessionId === sessionId
+        && lastTabState.value.rawCommand === requestedCommand
+        && lastTabState.value.candidatesKey === candidatesKey
+        && now - lastTabState.value.at < 3000
+      if (sameTap) {
+        terminalStore.appendLine(sessionId, candidates.join('  '))
+        lastTabState.value = { sessionId, rawCommand: requestedCommand, candidatesKey, at: 0 }
+      } else {
+        lastTabState.value = { sessionId, rawCommand: requestedCommand, candidatesKey, at: now }
+      }
+    } else {
+      lastTabState.value = { sessionId, rawCommand: requestedCommand, candidatesKey: '', at: now }
+    }
+
+    if (!keepHistoryView.value) scrollToBottom()
+  }
+
   const openTerminalSocket = ({ localSessionId, serverIp, alias, remoteSessionId = '', reconnect = false }) => new Promise((resolve, reject) => {
     const token = getTerminalWsToken()
     if (!token) {
@@ -237,6 +287,8 @@ export const useDashboardTerminal = (options) => {
         window.clearTimeout(failTimer)
         settled = true
         terminalStore.setSessionRemoteId(localSessionId, data.session_id || '')
+        if (data.cwd) terminalStore.setSessionCwd(localSessionId, data.cwd)
+        if (data.conda_env_name) terminalStore.setSessionCondaEnv(localSessionId, data.conda_env_name)
         terminalStore.setSessionSocket(localSessionId, socket)
         if (reconnect && data.reconnected) {
           terminalStore.appendLine(localSessionId, '')
@@ -251,6 +303,8 @@ export const useDashboardTerminal = (options) => {
         return
       }
       if (type === 'foreground_started') {
+        if (data.cwd) terminalStore.setSessionCwd(localSessionId, data.cwd)
+        if (data.conda_env_name) terminalStore.setSessionCondaEnv(localSessionId, data.conda_env_name)
         terminalStore.appendLine(localSessionId, '')
         terminalStore.appendLine(localSessionId, `\u524d\u53f0\u670d\u52a1\u5df2\u542f\u52a8\uff1aPID=${data.pid || ''}${data.port ? ` \u7aef\u53e3=${data.port}` : ''}`)
         terminalStore.appendLine(localSessionId, '')
@@ -261,13 +315,21 @@ export const useDashboardTerminal = (options) => {
         return
       }
       if (type === 'foreground_pending') {
+        if (data.cwd) terminalStore.setSessionCwd(localSessionId, data.cwd)
+        if (data.conda_env_name) terminalStore.setSessionCondaEnv(localSessionId, data.conda_env_name)
         terminalStore.appendLine(localSessionId, '')
         terminalStore.appendLine(localSessionId, data.message || '\u542f\u52a8\u547d\u4ee4\u5df2\u53d1\u9001')
         terminalStore.appendLine(localSessionId, '')
         return
       }
+      if (type === 'complete_result') {
+        applyTabCompletionResult(localSessionId, data)
+        tabCompletionBusy.value = false
+        return
+      }
       if (type === 'error') {
         terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38')
+        tabCompletionBusy.value = false
         if (!settled) {
           window.clearTimeout(failTimer)
           settled = true
@@ -277,6 +339,12 @@ export const useDashboardTerminal = (options) => {
       }
       if (type === 'closed') {
         terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u4f1a\u8bdd\u5df2\u5173\u95ed')
+        if (data.project_id) {
+          projectStore.updateProjectServiceStatus(data.project_id, {
+            service_status: '\u5df2\u505c\u6b62',
+            running_port: '',
+          })
+        }
       }
     }
     socket.onerror = () => {
@@ -433,6 +501,23 @@ export const useDashboardTerminal = (options) => {
       return
     }
 
+    const foregroundProject = typeof getForegroundProjectBySessionId === 'function'
+      ? getForegroundProjectBySessionId(String(sessionId))
+      : null
+    if (foregroundProject?.id && typeof onCtrlC === 'function') {
+      let stopped = false
+      await onCtrlC({
+        session: closing,
+        appendLine: (line) => terminalStore.appendLine(closing.id, line),
+        skipBackendStop: false,
+        onStopped: () => { stopped = true },
+      })
+      if (!stopped) {
+        ElMessage.warning('前台服务未停止，暂不关闭会话')
+        return
+      }
+    }
+
     let remoteClosed = false
     try {
       if (closing.remoteSessionId) {
@@ -489,15 +574,206 @@ export const useDashboardTerminal = (options) => {
     }
   }
 
-  const uploadFile = () => {
-    if (!activeSession.value) return
-    appendTerminal(`[上传] ${activeSessionAlias.value}：请选择具体文件`)
+  const startNativeDownload = (url) => {
+    const link = document.createElement('a')
+    link.href = url
+    link.target = '_blank'
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
-  const downloadFile = () => {
-    if (!activeSession.value) return
-    appendTerminal(`[下载] ${activeSessionAlias.value}：请选择具体文件`)
+  const ensureActiveTransferSession = () => {
+    const session = activeSession.value
+    if (!session) {
+      ElMessage.warning('请创建一个终端会话')
+      return null
+    }
+    if (!session.remoteSessionId) {
+      ElMessage.warning('当前终端会话尚未连接完成')
+      return null
+    }
+    return session
   }
+
+  const pickUploadEntries = () => new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.style.display = 'none'
+    input.onchange = () => {
+      const files = Array.from(input.files || [])
+      document.body.removeChild(input)
+      resolve(files)
+    }
+    document.body.appendChild(input)
+    input.click()
+  })
+
+  const uploadFile = async () => {
+    const session = ensureActiveTransferSession()
+    if (!session) return
+
+    const files = await pickUploadEntries()
+    if (!files.length) return
+
+    try {
+      for (const file of files) {
+        const relativePath = String(file.webkitRelativePath || '')
+        await terminalApi.upload({
+          session_id: session.remoteSessionId,
+          target_path: '',
+          relative_path: relativePath,
+          file,
+        })
+        terminalStore.appendLine(session.id, `已上传：${relativePath || file.name}`)
+      }
+      ElMessage.success('上传完成')
+    } catch (error) {
+      const msg = getErrorMessage(error, '上传失败')
+      terminalStore.appendLine(session.id, msg)
+      ElMessage.error(msg)
+    }
+  }
+
+  const loadDownloadOptions = async (path = '', targetNode = null) => {
+    const session = ensureActiveTransferSession()
+    if (!session) return false
+    downloadDialogLoading.value = true
+    try {
+      const resp = await terminalApi.listPath({
+        session_id: session.remoteSessionId,
+        path,
+      })
+      const data = resp.data?.data || {}
+      const options = Array.isArray(data.items) ? data.items : []
+      downloadCurrentPath.value = String(data.cwd || '')
+      downloadRootPath.value = String(data.root || '')
+      downloadParentPath.value = String(data.parent || '')
+      downloadCanGoParent.value = !!data.can_go_parent
+      const children = options.map((item) => ({
+        label: item.name || item.path,
+        value: item.path,
+        leaf: item.type !== 'dir',
+        path: item.path,
+        type: item.type === 'dir' ? 'dir' : 'file',
+      }))
+      if (targetNode) {
+        targetNode.children = children
+      } else {
+        downloadPathOptions.value = children
+        downloadPathCascaderValue.value = []
+        downloadSelectedPath.value = ''
+      }
+      return true
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '加载下载列表失败'))
+      return false
+    } finally {
+      downloadDialogLoading.value = false
+    }
+  }
+
+  const openDownloadDialog = async () => {
+    const session = ensureActiveTransferSession()
+    if (!session) return
+    downloadSelectedPath.value = ''
+    downloadPathCascaderValue.value = []
+    downloadPathOptions.value = []
+    downloadCurrentPath.value = ''
+    downloadRootPath.value = ''
+    downloadParentPath.value = ''
+    downloadCanGoParent.value = false
+    downloadDialogVisible.value = true
+    const ok = await loadDownloadOptions('')
+    if (ok && !downloadPathOptions.value.length) {
+      ElMessage.warning('当前目录暂无可下载文件或目录')
+    }
+  }
+
+  const loadDownloadCascaderChildren = async (node, resolve) => {
+    const nodeData = node?.data || {}
+    const path = String(nodeData.path || nodeData.value || '')
+    if (!path) {
+      resolve(downloadPathOptions.value)
+      return
+    }
+    const session = ensureActiveTransferSession()
+    if (!session) {
+      resolve([])
+      return
+    }
+    try {
+      const resp = await terminalApi.listPath({
+        session_id: session.remoteSessionId,
+        path,
+      })
+      const data = resp.data?.data || {}
+      const options = Array.isArray(data.items) ? data.items : []
+      const children = options.map((item) => ({
+        label: item.name || item.path,
+        value: item.path,
+        leaf: item.type !== 'dir',
+        path: item.path,
+        type: item.type === 'dir' ? 'dir' : 'file',
+      }))
+      resolve(children)
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, '加载下载列表失败'))
+      resolve([])
+    }
+  }
+
+  const onDownloadPathChange = (value) => {
+    const list = Array.isArray(value) ? value : []
+    downloadPathCascaderValue.value = list
+    downloadSelectedPath.value = list.length ? String(list[list.length - 1] || '') : ''
+  }
+
+  const clearDownloadPath = () => {
+    downloadPathCascaderValue.value = []
+    downloadSelectedPath.value = ''
+  }
+
+  const enterDownloadDirectory = async (path) => {
+    const value = String(path || '').trim()
+    if (!value) return
+    await loadDownloadOptions(value)
+  }
+
+  const goDownloadParent = async () => {
+    if (!downloadCanGoParent.value || !downloadParentPath.value) return
+    await loadDownloadOptions(downloadParentPath.value)
+  }
+
+  const selectDownloadPath = (item) => {
+    if (!item?.path) return
+    downloadSelectedPath.value = item.path
+    downloadPathCascaderValue.value = [item.path]
+  }
+
+  const confirmDownloadFile = async () => {
+    const session = ensureActiveTransferSession()
+    if (!session) return
+    const path = downloadSelectedPath.value
+    if (!path) return
+    downloadDialogVisible.value = false
+    try {
+      const resp = await terminalApi.createDownloadTicket({ session_id: session.remoteSessionId, path })
+      const ticket = resp.data?.data?.ticket || ''
+      if (!ticket) throw new Error('下载凭证生成失败')
+      startNativeDownload(buildTerminalDirectDownloadUrl(ticket))
+      terminalStore.appendLine(session.id, `开始下载：${path}`)
+      ElMessage.success('已开始下载，请在浏览器下载栏查看进度')
+    } catch (error) {
+      const msg = getErrorMessage(error, '下载失败')
+      terminalStore.appendLine(session.id, msg)
+      ElMessage.error(msg)
+    }
+  }
+
+  const downloadFile = openDownloadDialog
 
   const pushCommandHistory = (command) => {
     const value = String(command || '').trim()
@@ -608,62 +884,27 @@ export const useDashboardTerminal = (options) => {
     if (!rawCommand) return
     if (!session.remoteSessionId) return
 
+    const now = Date.now()
+    const cached = lastTabState.value
+    if (cached.sessionId === session.id
+      && cached.rawCommand === rawCommand
+      && cached.candidatesKey
+      && now - cached.at < 3000) {
+      terminalStore.appendLine(session.id, cached.candidatesKey.split('\u0001').join('  '))
+      lastTabState.value = { ...cached, at: 0 }
+      if (!keepHistoryView.value) scrollToBottom()
+      return
+    }
+
     tabCompletionBusy.value = true
     try {
-      const resp = await terminalApi.complete({
-        session_id: session.remoteSessionId,
+      await sendSocketMessage(session.id, {
+        type: 'complete',
         command: rawCommand,
       })
-      const data = resp.data?.data || {}
-      const completedCommand = String(data.completed_command || rawCommand)
-      const candidates = Array.isArray(data.candidates) ? data.candidates : []
-      const now = Date.now()
-      const candidatesKey = candidates.join('\u0001')
-
-      if (completedCommand !== rawCommand) {
-        commandInput.value = completedCommand
-        lastTabState.value = {
-          sessionId: session.id,
-          rawCommand: completedCommand,
-          candidatesKey,
-          at: now,
-        }
-      } else if (candidates.length) {
-        const sameTap = lastTabState.value.sessionId === session.id
-          && lastTabState.value.rawCommand === rawCommand
-          && lastTabState.value.candidatesKey === candidatesKey
-          && now - lastTabState.value.at < 1500
-        if (sameTap) {
-          terminalStore.appendLine(session.id, candidates.join('  '))
-          lastTabState.value = {
-            sessionId: session.id,
-            rawCommand,
-            candidatesKey,
-            at: 0,
-          }
-        } else {
-          lastTabState.value = {
-            sessionId: session.id,
-            rawCommand,
-            candidatesKey,
-            at: now,
-          }
-        }
-      } else {
-        lastTabState.value = {
-          sessionId: session.id,
-          rawCommand,
-          candidatesKey: '',
-          at: now,
-        }
-      }
-      if (!keepHistoryView.value) {
-        scrollToBottom()
-      }
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25'))
-    } finally {
       tabCompletionBusy.value = false
+      ElMessage.warning(getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25'))
     }
   }
 
@@ -742,6 +983,23 @@ export const useDashboardTerminal = (options) => {
     createSessionForm,
     openSessionDialog,
     confirmCreateSession,
+    downloadDialogVisible,
+    downloadDialogLoading,
+    downloadPathOptions,
+    downloadSelectedPath,
+    downloadPathCascaderValue,
+    downloadCurrentPath,
+    downloadRootPath,
+    downloadParentPath,
+    downloadCanGoParent,
+    loadDownloadOptions,
+    enterDownloadDirectory,
+    goDownloadParent,
+    selectDownloadPath,
+    loadDownloadCascaderChildren,
+    onDownloadPathChange,
+    clearDownloadPath,
+    confirmDownloadFile,
     ensureCreateProjectSession,
     ensureProjectTaskSession,
     uploadFile,

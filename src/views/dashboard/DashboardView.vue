@@ -71,6 +71,58 @@
     </template>
   </MainLayout>
 
+  <el-dialog
+    v-model="downloadDialogVisible"
+    title="下载文件或目录"
+    width="560px"
+  >
+    <el-form label-width="96px">
+      <el-form-item label="当前会话">
+        <span>{{ activeSessionAlias }}</span>
+      </el-form-item>
+      <el-form-item label="下载路径">
+        <el-cascader
+          ref="downloadPathCascaderRef"
+          v-model="downloadPathCascaderValue"
+          class="download-cascader"
+          :options="downloadPathOptions"
+          :props="downloadPathProps"
+          clearable
+          filterable
+          :show-all-levels="false"
+          :loading="downloadDialogLoading"
+          placeholder="请选择要下载的文件或目录"
+          @change="handleDownloadPathChange"
+          @clear="clearDownloadPath"
+        >
+          <template #default="{ data }">
+            <span
+              class="download-path-node"
+              :class="data.type === 'dir' ? 'is-dir' : 'is-file'"
+            >
+              <span
+                class="download-path-type-icon"
+                :class="data.type === 'dir' ? 'is-dir' : 'is-file'"
+              />
+              <span class="download-path-name">{{ data.label }}</span>
+            </span>
+          </template>
+        </el-cascader>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="downloadDialogVisible = false">取消</el-button>
+      <el-button
+        type="primary"
+        :disabled="!downloadSelectedPath"
+        :loading="downloadDialogLoading"
+        @click="confirmDownloadFile"
+      >
+        下载
+      </el-button>
+    </template>
+  </el-dialog>
+
   <DashboardDialogsHost
     :project-drawer-visible="projectDrawerVisible"
     :selected-project="selectedProject"
@@ -180,7 +232,7 @@
 </template>
 
 <script setup>
-import { onMounted, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import DashboardCenterPanel from '@/views/dashboard/components/DashboardCenterPanel.vue'
 import DashboardDialogsHost from '@/views/dashboard/components/DashboardDialogsHost.vue'
@@ -207,6 +259,7 @@ const terminal = useDashboardTerminal({
   terminalStore,
   projectStore,
   onCtrlC: (payload) => dialogs?.handleTerminalCtrlC?.(payload),
+  getForegroundProjectBySessionId: (sessionId) => dialogs?.getForegroundProjectBySessionId?.(sessionId),
 })
 dialogs = useDashboardDialogs({
   layout,
@@ -298,11 +351,37 @@ const {
   createSessionForm,
   openSessionDialog,
   confirmCreateSession,
+  activeSessionAlias,
+  downloadDialogVisible,
+  downloadDialogLoading,
+  downloadPathOptions,
+  downloadSelectedPath,
+  downloadPathCascaderValue,
+  loadDownloadCascaderChildren,
+  onDownloadPathChange,
+  clearDownloadPath,
+  confirmDownloadFile,
   uploadFile,
   downloadFile,
   handleConsoleShortcut,
   onConsoleScroll,
 } = terminal
+
+const downloadPathProps = {
+  emitPath: true,
+  checkStrictly: true,
+  lazy: true,
+  lazyLoad: loadDownloadCascaderChildren,
+}
+
+const downloadPathCascaderRef = ref()
+
+const handleDownloadPathChange = (value) => {
+  onDownloadPathChange(value)
+  nextTick(() => {
+    downloadPathCascaderRef.value?.togglePopperVisible?.(false)
+  })
+}
 
 const {
   selectedProject,
@@ -409,3 +488,80 @@ onMounted(async () => {
 })
 </script>
 
+<style scoped>
+.download-cascader {
+  width: 100%;
+}
+
+.download-path-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  line-height: 1;
+}
+
+.download-path-type-icon {
+  flex: 0 0 auto;
+  position: relative;
+  display: inline-block;
+}
+
+.download-path-type-icon.is-dir {
+  width: 18px;
+  height: 13px;
+  margin-top: 2px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.18);
+}
+
+.download-path-type-icon.is-dir::before {
+  position: absolute;
+  top: -4px;
+  left: 2px;
+  width: 8px;
+  height: 5px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(135deg, #93c5fd 0%, #3b82f6 100%);
+  content: '';
+}
+
+.download-path-type-icon.is-file {
+  width: 15px;
+  height: 18px;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.download-path-type-icon.is-file::after {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 6px;
+  height: 6px;
+  border-bottom: 1px solid #94a3b8;
+  border-left: 1px solid #94a3b8;
+  border-radius: 0 4px 0 2px;
+  background: linear-gradient(135deg, #e2e8f0 0%, #ffffff 100%);
+  content: '';
+}
+
+.download-path-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-path-node.is-dir .download-path-name {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.download-path-node.is-file .download-path-name {
+  color: #475569;
+  font-weight: 500;
+}
+</style>
