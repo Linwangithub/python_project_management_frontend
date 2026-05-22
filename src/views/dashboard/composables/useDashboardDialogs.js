@@ -828,10 +828,6 @@ export const useDashboardDialogs = (options) => {
       if (typeof runProjectForegroundInSession !== 'function') throw new Error('\u7ec8\u7aef\u524d\u53f0\u542f\u52a8\u80fd\u529b\u672a\u521d\u59cb\u5316')
       await runProjectForegroundInSession(sessionInfo.localSessionId, prepare)
       foregroundProjectBySessionId[String(sessionInfo.localSessionId)] = { id: project.id, name: project.name }
-      projectStore.updateProjectServiceStatus(project.id, {
-        service_status: PROJECT_RUNNING_TEXT,
-        running_port: prepare.port || '',
-      })
       ElMessage.success('\u524d\u53f0\u542f\u52a8\u547d\u4ee4\u5df2\u53d1\u9001\uff0c\u5b9e\u9645\u8f93\u51fa\u8bf7\u67e5\u770b\u53f3\u4fa7\u7ec8\u7aef')
     } catch (error) {
       const msg = getErrorMessage(error, RUNTIME_TEXT.startForegroundFail)

@@ -66,10 +66,12 @@ import { menuPermissionKeyMap } from '@/config/permission/permission.map'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useProjectStore } from '@/stores/project'
+import { useTerminalStore } from '@/stores/terminal'
 
 const auth = useAuthStore()
 const layout = useLayoutStore()
 const projectStore = useProjectStore()
+const terminalStore = useTerminalStore()
 const appName = appConfig.appName
 const bodyRef = ref(null)
 const defaultLeftWidth = 220
@@ -146,6 +148,7 @@ const visibleMenus = computed(() =>
 const userLabel = computed(() => `用户: ${auth.user?.username || '-'} 角色: ${auth.role || '-'}`)
 
 const logout = () => {
+  terminalStore.reset()
   auth.logout()
   projectStore.reset()
   location.hash = '#/login'

@@ -114,11 +114,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     sockets.clear()
   }
 
-  const hydrate = (identity) => {
+  const hydrate = (identity, options = {}) => {
     storageKey.value = storageKeyFor(identity || getCurrentUserIdentity())
     if (!isClient()) return
 
-    closeAllSockets()
+    if (options.closeAll === true) closeAllSockets()
     const raw = window.localStorage.getItem(storageKey.value)
     if (!raw) {
       sessions.value = []
@@ -136,13 +136,14 @@ export const useTerminalStore = defineStore('terminal', () => {
       : (restored[0]?.id || '')
   }
 
-  const loadForUser = (identity) => {
-    hydrate(identity)
+  const loadForUser = (identity, options = {}) => {
+    hydrate(identity, options)
   }
 
   const findSession = (id) => sessions.value.find((item) => item.id === String(id))
   const getSession = (id) => findSession(id)
   const getActiveSession = () => findSession(activeSessionId.value)
+  const getSessions = () => sessions.value.slice()
 
   const nextId = () => {
     const ids = sessions.value
@@ -316,14 +317,16 @@ export const useTerminalStore = defineStore('terminal', () => {
     })
   }
 
-  const closeSession = (id) => {
+  const closeSession = (id, options = {}) => {
     const targetId = String(id)
     const index = sessions.value.findIndex((item) => item.id === targetId)
     if (index === -1) return false
 
     const socket = removeSessionSocket(targetId)
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'close' }))
+      if (options.skipRemoteClose !== true) {
+        socket.send(JSON.stringify({ type: 'close' }))
+      }
       socket.close()
     }
 
@@ -351,6 +354,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     loadForUser,
     getSession,
     getActiveSession,
+    getSessions,
     setActiveSession,
     appendLine,
     appendChunk,

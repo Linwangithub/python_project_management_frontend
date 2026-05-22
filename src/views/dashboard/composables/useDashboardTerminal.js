@@ -108,15 +108,25 @@ export const useDashboardTerminal = (options) => {
     terminalStore.loadForUser(currentUserIdentity.value)
   }
 
-  watch(
-    currentUserIdentity,
-    () => {
-      refreshSessions()
-      commandInput.value = ''
-      resetHistoryCursor()
-    },
-    { immediate: true },
-  )
+  const reconnectStoredSessions = async () => {
+    const sessions = typeof terminalStore.getSessions === 'function' ? terminalStore.getSessions() : []
+    for (const session of sessions) {
+      if (!session?.serverIp || !session?.remoteSessionId) continue
+      const socket = terminalStore.getSessionSocket(session.id)
+      if (socket && socket.readyState === WebSocket.OPEN) continue
+      try {
+        await openTerminalSocket({
+          localSessionId: session.id,
+          serverIp: session.serverIp,
+          alias: session.alias,
+          remoteSessionId: session.remoteSessionId,
+          reconnect: true,
+        })
+      } catch {
+        // reconnect silently; next command will retry when needed
+      }
+    }
+  }
 
   const scrollToBottom = () => {
     nextTick(() => {
@@ -193,7 +203,7 @@ export const useDashboardTerminal = (options) => {
     scrollToBottom()
   }
 
-  const openTerminalSocket = ({ localSessionId, serverIp, alias }) => new Promise((resolve, reject) => {
+  const openTerminalSocket = ({ localSessionId, serverIp, alias, remoteSessionId = '', reconnect = false }) => new Promise((resolve, reject) => {
     const token = getTerminalWsToken()
     if (!token) {
       reject(new Error('\u767b\u5f55\u4ee4\u724c\u4e3a\u7a7a\uff0c\u65e0\u6cd5\u521b\u5efa\u7ec8\u7aef\u8fde\u63a5'))
@@ -209,7 +219,7 @@ export const useDashboardTerminal = (options) => {
     }, 10000)
 
     const sendOpen = () => {
-      socket.send(JSON.stringify({ type: 'open', server_ip: serverIp, alias }))
+      socket.send(JSON.stringify({ type: 'open', server_ip: serverIp, alias, session_id: remoteSessionId || '' }))
     }
 
     socket.onopen = sendOpen
@@ -228,6 +238,11 @@ export const useDashboardTerminal = (options) => {
         settled = true
         terminalStore.setSessionRemoteId(localSessionId, data.session_id || '')
         terminalStore.setSessionSocket(localSessionId, socket)
+        if (reconnect && data.reconnected) {
+          terminalStore.appendLine(localSessionId, '')
+          terminalStore.appendLine(localSessionId, '[\u7cfb\u7edf] \u7ec8\u7aef\u8fde\u63a5\u5df2\u6062\u590d')
+          terminalStore.appendLine(localSessionId, '')
+        }
         resolve(socket)
         return
       }
@@ -279,19 +294,45 @@ export const useDashboardTerminal = (options) => {
       if (!settled) {
         settled = true
         reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u5df2\u5173\u95ed'))
-      } else {
-        terminalStore.appendLine(localSessionId, '[\u7cfb\u7edf] \u7ec8\u7aef\u8fde\u63a5\u5df2\u5173\u95ed')
       }
     }
   })
 
-  const sendSocketMessage = (sessionId, payload) => {
-    const socket = terminalStore.getSessionSocket(sessionId)
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+  const ensureSocketConnected = async (sessionId) => {
+    const session = terminalStore.getSession(sessionId)
+    if (!session) throw new Error('\u7ec8\u7aef\u4f1a\u8bdd\u4e0d\u5b58\u5728')
+
+    const socket = terminalStore.getSessionSocket(session.id)
+    if (socket && socket.readyState === WebSocket.OPEN) return socket
+
+    if (!session.serverIp || !session.remoteSessionId) {
       throw new Error('\u7ec8\u7aef WebSocket \u672a\u8fde\u63a5')
     }
+
+    return openTerminalSocket({
+      localSessionId: session.id,
+      serverIp: session.serverIp,
+      alias: session.alias,
+      remoteSessionId: session.remoteSessionId,
+      reconnect: true,
+    })
+  }
+
+  const sendSocketMessage = async (sessionId, payload) => {
+    const socket = await ensureSocketConnected(sessionId)
     socket.send(JSON.stringify(payload))
   }
+
+  watch(
+    currentUserIdentity,
+    async (_next, previous) => {
+      terminalStore.loadForUser(currentUserIdentity.value, { closeAll: !!previous && previous !== currentUserIdentity.value })
+      commandInput.value = ''
+      resetHistoryCursor()
+      await reconnectStoredSessions()
+    },
+    { immediate: true },
+  )
 
   const createSessionByServer = async (serverIp, baseAlias, hostLabel) => {
     const finalAlias = terminalStore.buildNextAlias(serverIp, baseAlias)
@@ -367,22 +408,24 @@ export const useDashboardTerminal = (options) => {
     if (!closing) return
 
     if (closing.locked) {
-      ElMessage.warning(closing.lockReason || '该会话任务执行中，暂不可关闭')
+      ElMessage.warning(closing.lockReason || '\u8be5\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u6682\u4e0d\u53ef\u5173\u95ed')
       return
     }
 
+    let remoteClosed = false
     try {
       if (closing.remoteSessionId) {
         await terminalApi.closeSession({ session_id: closing.remoteSessionId })
+        remoteClosed = true
       }
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, '关闭远程会话失败，已关闭本地会话'))
+      ElMessage.warning(getErrorMessage(error, '\u5173\u95ed\u8fdc\u7a0b\u4f1a\u8bdd\u5931\u8d25\uff0c\u5df2\u5173\u95ed\u672c\u5730\u4f1a\u8bdd'))
     }
 
-    const ok = terminalStore.closeSession(sessionId)
+    const ok = terminalStore.closeSession(sessionId, { skipRemoteClose: remoteClosed })
     if (!ok) return
 
-    ElMessage.success(`已关闭会话：${closing.alias}`)
+    ElMessage.success(`\u5df2\u5173\u95ed\u4f1a\u8bdd\uff1a${closing.alias}`)
     scrollToBottom()
   }
 
@@ -454,17 +497,14 @@ export const useDashboardTerminal = (options) => {
     if (!session) throw new Error('\u7ec8\u7aef\u4f1a\u8bdd\u4e0d\u5b58\u5728')
     const command = String(rawCommand || '').trim()
     if (!command) throw new Error('\u547d\u4ee4\u4e0d\u80fd\u4e3a\u7a7a')
-    const socket = terminalStore.getSessionSocket(session.id)
-    if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('\u7ec8\u7aef WebSocket \u672a\u8fde\u63a5')
-
-    sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
+    await sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
     return { stdout: '', stderr: '', exit_code: 0 }
   }
 
   const runProjectForegroundInSession = async (sessionId, prepare = {}) => {
     const command = String(prepare.command || '').trim()
     if (!command) throw new Error('\u6682\u65e0\u914d\u7f6e\u542f\u52a8\u547d\u4ee4')
-    sendSocketMessage(sessionId, {
+    await sendSocketMessage(sessionId, {
       type: 'run_foreground',
       project_id: prepare.project_id,
       work_dir: prepare.work_dir || '',
@@ -504,7 +544,7 @@ export const useDashboardTerminal = (options) => {
     }
 
     try {
-      sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
+      await sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
       commandInput.value = ''
       resetHistoryCursor()
       if (!keepHistoryView.value) {
@@ -619,11 +659,9 @@ export const useDashboardTerminal = (options) => {
       event.preventDefault()
       const session = activeSession.value
       if (!session || session.locked) return
-      try {
-        sendSocketMessage(session.id, { type: 'input', text: '\u0003' })
-      } catch {
+      sendSocketMessage(session.id, { type: 'input', text: '\u0003' }).catch(() => {
         terminalStore.appendLine(session.id, '^C')
-      }
+      })
       if (typeof onCtrlC === 'function') {
         onCtrlC({ session, appendLine: (line) => terminalStore.appendLine(session.id, line), skipBackendStop: true })
       }
