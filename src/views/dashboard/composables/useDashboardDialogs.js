@@ -512,7 +512,7 @@ export const useDashboardDialogs = (options) => {
 
     try {
       if (typeof ensureProjectTaskSession === 'function' && serverIp) {
-        sessionInfo = await ensureProjectTaskSession(serverIp, 'setting')
+        sessionInfo = await ensureProjectTaskSession(serverIp, 'setting', { reuse: false })
         lockSession(sessionInfo.localSessionId, `保存项目设置 ${settingForm.projectName} 中，请稍候`)
         await appendSettingStep(sessionInfo.localSessionId, `1.连接目标服务器：${serverIp}   ---> 已完成`)
         await appendSettingStep(sessionInfo.localSessionId, '')

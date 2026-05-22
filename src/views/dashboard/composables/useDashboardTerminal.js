@@ -368,10 +368,31 @@ export const useDashboardTerminal = (options) => {
     return created
   }
 
-  const ensureProjectTaskSession = async (serverIp, suffix = 'task') => {
+  const ensureProjectTaskSession = async (serverIp, suffix = 'task', options = {}) => {
     if (!serverIp) {
       throw new Error('\u670d\u52a1\u5668IP\u4e0d\u80fd\u4e3a\u7a7a')
     }
+
+    const shouldReuseSession = options.reuse !== false
+    if (shouldReuseSession) {
+      const sessions = typeof terminalStore.getSessions === 'function' ? terminalStore.getSessions() : []
+      const sameServerSessions = sessions.filter((item) => String(item?.serverIp || '') === String(serverIp))
+      const reusableSession = sameServerSessions.find((item) => !item.locked)
+      if (reusableSession) {
+        terminalStore.setActiveSession(reusableSession.id)
+        await ensureSocketConnected(reusableSession.id)
+        scrollToBottom()
+        return {
+          localSessionId: reusableSession.id,
+          finalAlias: reusableSession.alias,
+          remoteSessionId: reusableSession.remoteSessionId || '',
+        }
+      }
+      if (sameServerSessions.length) {
+        throw new Error('\u5f53\u524d\u670d\u52a1\u5668\u7ec8\u7aef\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5')
+      }
+    }
+
     const lastPart = String(serverIp).split('.').pop() || 'server'
     const safeSuffix = String(suffix || 'task').replace(/^_+/, '')
     const baseAlias = `${lastPart}_${safeSuffix}`
@@ -526,9 +547,26 @@ export const useDashboardTerminal = (options) => {
       return
     }
 
-    const command = String(rawCommand || '').trim()
+    const raw = String(rawCommand ?? '')
+    const command = raw.trim()
     if (!command) {
-      ElMessage.warning('\u8bf7\u8f93\u5165\u547d\u4ee4')
+      try {
+        await sendSocketMessage(session.id, { type: 'input', text: '\n' })
+        commandInput.value = ''
+        resetHistoryCursor()
+        if (!keepHistoryView.value) {
+          scrollToBottom()
+        }
+      } catch (error) {
+        const msg = getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25')
+        terminalStore.appendLine(session.id, msg)
+        ElMessage.error(msg)
+        commandInput.value = ''
+        resetHistoryCursor()
+        if (!keepHistoryView.value) {
+          scrollToBottom()
+        }
+      }
       return
     }
 
