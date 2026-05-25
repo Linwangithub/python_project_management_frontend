@@ -30,6 +30,7 @@ export const useDashboardDialogs = (options) => {
   const {
     layout,
     projectStore,
+    terminalStore,
     activeSessionAlias,
     activeSessionIp,
     appendTerminal,
@@ -906,6 +907,21 @@ export const useDashboardDialogs = (options) => {
         return
       }
       try {
+        const foregroundSession = typeof terminalStore?.findForegroundSessionByProject === 'function'
+          ? terminalStore.findForegroundSessionByProject(project.id)
+          : null
+        if (foregroundSession?.id) {
+          await handleTerminalCtrlC({
+            session: foregroundSession,
+            appendLine: (line) => appendSessionLine(foregroundSession.id, line),
+            onStopped: () => {
+              if (typeof terminalStore?.clearSessionForeground === 'function') {
+                terminalStore.clearSessionForeground(foregroundSession.id)
+              }
+            },
+          })
+          return
+        }
         await runProjectRuntimeAction({
           project,
           request: () => projectApi.stopProject(project.id),
@@ -970,6 +986,9 @@ export const useDashboardDialogs = (options) => {
       const msg = String(resp.data?.message || data.message || RUNTIME_TEXT.stopServiceOk)
       if (typeof appendLine === 'function') appendLine(msg)
       delete foregroundProjectBySessionId[sessionId]
+      if (typeof terminalStore?.clearSessionForeground === 'function') {
+        terminalStore.clearSessionForeground(sessionId)
+      }
       if (typeof onStopped === 'function') onStopped(target)
       projectStore.setProjectStatus(target.id, PROJECT_STOPPED_TEXT)
       await projectStore.loadBundle()

@@ -2,7 +2,7 @@ import axios from 'axios'
 
 export const TOKEN_STORAGE_KEY = 'pspm_token'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://192.168.31.187:8888/api'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://192.168.31.130:8888/api'
 
 export const request = axios.create({
   baseURL: API_BASE_URL,

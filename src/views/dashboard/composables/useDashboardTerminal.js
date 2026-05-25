@@ -339,6 +339,9 @@ export const useDashboardTerminal = (options) => {
       }
       if (type === 'closed') {
         terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u4f1a\u8bdd\u5df2\u5173\u95ed')
+        if (typeof terminalStore.clearSessionForeground === 'function') {
+          terminalStore.clearSessionForeground(localSessionId)
+        }
         if (data.project_id) {
           projectStore.updateProjectServiceStatus(data.project_id, {
             service_status: '\u5df2\u505c\u6b62',
@@ -373,7 +376,7 @@ export const useDashboardTerminal = (options) => {
     const socket = terminalStore.getSessionSocket(session.id)
     if (socket && socket.readyState === WebSocket.OPEN) return socket
 
-    if (!session.serverIp || !session.remoteSessionId) {
+    if (!session.serverIp) {
       throw new Error('\u7ec8\u7aef WebSocket \u672a\u8fde\u63a5')
     }
 
@@ -445,18 +448,22 @@ export const useDashboardTerminal = (options) => {
     if (shouldReuseSession) {
       const sessions = typeof terminalStore.getSessions === 'function' ? terminalStore.getSessions() : []
       const sameServerSessions = sessions.filter((item) => String(item?.serverIp || '') === String(serverIp))
-      const reusableSession = sameServerSessions.find((item) => !item.locked)
-      if (reusableSession) {
-        terminalStore.setActiveSession(reusableSession.id)
-        await ensureSocketConnected(reusableSession.id)
-        scrollToBottom()
-        return {
-          localSessionId: reusableSession.id,
-          finalAlias: reusableSession.alias,
-          remoteSessionId: reusableSession.remoteSessionId || '',
+      const reusableSessions = sameServerSessions.filter((item) => !item.locked && !item.foregroundRunning)
+      for (const reusableSession of reusableSessions) {
+        try {
+          terminalStore.setActiveSession(reusableSession.id)
+          await ensureSocketConnected(reusableSession.id)
+          scrollToBottom()
+          return {
+            localSessionId: reusableSession.id,
+            finalAlias: reusableSession.alias,
+            remoteSessionId: terminalStore.getSession(reusableSession.id)?.remoteSessionId || '',
+          }
+        } catch {
+          // 本地残留的坏会话不应该阻断操作，继续尝试其它会话或新建会话。
         }
       }
-      if (sameServerSessions.length) {
+      if (sameServerSessions.length && !reusableSessions.length) {
         throw new Error('\u5f53\u524d\u670d\u52a1\u5668\u7ec8\u7aef\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5')
       }
     }
@@ -801,14 +808,28 @@ export const useDashboardTerminal = (options) => {
   const runProjectForegroundInSession = async (sessionId, prepare = {}) => {
     const command = String(prepare.command || '').trim()
     if (!command) throw new Error('\u6682\u65e0\u914d\u7f6e\u542f\u52a8\u547d\u4ee4')
-    await sendSocketMessage(sessionId, {
-      type: 'run_foreground',
-      project_id: prepare.project_id,
-      work_dir: prepare.work_dir || '',
-      conda_env_name: prepare.conda_env_name || '',
-      command,
-      port: prepare.port || '',
-    })
+    if (typeof terminalStore.setSessionForeground === 'function') {
+      terminalStore.setSessionForeground(sessionId, {
+        running: true,
+        projectId: prepare.project_id,
+        projectName: prepare.project_name || '',
+      })
+    }
+    try {
+      await sendSocketMessage(sessionId, {
+        type: 'run_foreground',
+        project_id: prepare.project_id,
+        work_dir: prepare.work_dir || '',
+        conda_env_name: prepare.conda_env_name || '',
+        command,
+        port: prepare.port || '',
+      })
+    } catch (error) {
+      if (typeof terminalStore.clearSessionForeground === 'function') {
+        terminalStore.clearSessionForeground(sessionId)
+      }
+      throw error
+    }
   }
 
   const executeCommand = async (rawCommand = commandInput.value) => {

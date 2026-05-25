@@ -49,6 +49,9 @@ const createSessionRecord = ({
   locked = false,
   lockReason = '',
   condaEnvName = 'base',
+  foregroundRunning = false,
+  foregroundProjectId = 0,
+  foregroundProjectName = '',
 }) => ({
   id: String(id),
   remoteSessionId: String(remoteSessionId || ''),
@@ -60,6 +63,9 @@ const createSessionRecord = ({
   locked: !!locked,
   lockReason: String(lockReason || ''),
   condaEnvName: String(condaEnvName || 'base'),
+  foregroundRunning: !!foregroundRunning,
+  foregroundProjectId: Number(foregroundProjectId || 0),
+  foregroundProjectName: String(foregroundProjectName || ''),
   lines: [],
 })
 
@@ -76,6 +82,9 @@ const normalizeSession = (session) => {
     locked: !!safe.locked,
     lockReason: safe.lockReason || '',
     condaEnvName: safe.condaEnvName || 'base',
+    foregroundRunning: !!safe.foregroundRunning,
+    foregroundProjectId: Number(safe.foregroundProjectId || 0),
+    foregroundProjectName: safe.foregroundProjectName || '',
   })
   normalized.lines = Array.isArray(safe.lines) ? safe.lines.map((line) => String(line)) : []
   return normalized
@@ -264,6 +273,30 @@ export const useTerminalStore = defineStore('terminal', () => {
     persist()
   }
 
+  const setSessionForeground = (sessionId, payload = {}) => {
+    const session = findSession(sessionId)
+    if (!session) return
+    session.foregroundRunning = !!payload.running
+    session.foregroundProjectId = Number(payload.projectId || payload.project_id || 0)
+    session.foregroundProjectName = String(payload.projectName || payload.project_name || '')
+    persist()
+  }
+
+  const clearSessionForeground = (sessionId) => {
+    const session = findSession(sessionId)
+    if (!session) return
+    session.foregroundRunning = false
+    session.foregroundProjectId = 0
+    session.foregroundProjectName = ''
+    persist()
+  }
+
+  const findForegroundSessionByProject = (projectId) => {
+    const id = Number(projectId || 0)
+    if (!id) return null
+    return sessions.value.find((item) => !!item.foregroundRunning && Number(item.foregroundProjectId || 0) === id) || null
+  }
+
   const createSessionLocal = ({
     serverIp,
     alias,
@@ -371,6 +404,9 @@ export const useTerminalStore = defineStore('terminal', () => {
     createSessionLocal,
     createSiblingSessionLocal,
     setSessionLocked,
+    setSessionForeground,
+    clearSessionForeground,
+    findForegroundSessionByProject,
     closeSession,
     buildNextAlias,
     buildPrompt,
