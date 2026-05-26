@@ -10,17 +10,18 @@
       :model-value="migrate"
       @update:model-value="emit('update:migrate', $event)"
     >
-      <el-radio label="yes">删除账号并迁移其项目到我的目录</el-radio>
-      <el-radio label="no">仅删除账号，不迁移项目</el-radio>
+      <el-radio label="yes">{{ deleteUserDialogText.migrateYes }}</el-radio>
+      <el-radio label="no">{{ deleteUserDialogText.migrateNo }}</el-radio>
     </el-radio-group>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" @click="emit('confirm')">确认</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ dialogCommonText.cancel }}</el-button>
+      <el-button type="primary" @click="emit('confirm')">{{ dialogCommonText.confirm }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
+import { deleteUserDialogText, dialogCommonText } from '@/config/dialog/dialog.text.config'
 defineProps(['modelValue', 'title', 'text', 'migrate'])
 const emit = defineEmits(['update:modelValue', 'update:migrate', 'confirm'])
 </script>

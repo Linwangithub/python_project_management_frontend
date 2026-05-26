@@ -1,12 +1,12 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="项目设置"
+    :title="settingText.dialogTitle"
     :width="width || '860px'"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="setting-workflow">
-      <div ref="stepperRef" class="workflow-stepper" role="list" aria-label="设置流程">
+      <div ref="stepperRef" class="workflow-stepper" role="list" :aria-label="settingText.workflowAriaLabel">
         <svg class="stepper-svg" :viewBox="`0 0 ${stepperSize.width} ${stepperSize.height}`" preserveAspectRatio="none">
           <g v-for="line in connectorLines" :key="line.key">
             <path
@@ -43,20 +43,20 @@
 
         <div v-if="currentStep === 0" class="step-content">
           <el-form label-position="top">
-            <el-form-item label="是否修改项目描述">
+            <el-form-item :label="settingText.modifyDescription">
               <el-switch
                 v-model="form.descriptionModifyEnabled"
-                active-text="修改"
-                inactive-text="不修改"
+                :active-text="settingText.modify"
+                :inactive-text="settingText.onlyView"
               />
             </el-form-item>
-            <el-form-item label="项目描述">
+            <el-form-item :label="settingText.projectDescription">
               <el-input
                 v-model="form.description"
                 type="textarea"
                 :rows="4"
                 :disabled="!form.descriptionModifyEnabled"
-                placeholder="请输入项目描述"
+                :placeholder="settingText.inputProjectDescription"
                 @blur="checkDescriptionChange"
               />
             </el-form-item>
@@ -65,18 +65,18 @@
 
         <div v-else-if="currentStep === 1" class="step-content">
           <el-form label-position="top">
-            <el-form-item label="是否修改Conda环境">
+            <el-form-item :label="settingText.modifyCondaEnv">
               <el-switch
                 v-model="form.condaModifyEnabled"
-                active-text="修改"
-                inactive-text="不修改"
+                :active-text="settingText.modify"
+                :inactive-text="settingText.onlyView"
               />
             </el-form-item>
-            <el-form-item label="Conda环境">
+            <el-form-item :label="settingText.condaEnv">
               <el-select
                 v-model="form.condaEnvName"
                 :disabled="!form.condaModifyEnabled"
-                placeholder="请选择或输入Conda环境名称"
+                :placeholder="settingText.chooseOrInputCondaEnv"
                 filterable
                 allow-create
                 default-first-option
@@ -102,14 +102,14 @@
 
         <div v-else-if="currentStep === 2" class="step-content">
           <el-form label-position="top">
-            <el-form-item v-if="hasOriginalEntryFilePath()" label="是否修改项目入口文件">
+            <el-form-item v-if="hasOriginalEntryFilePath()" :label="settingText.modifyEntryFile">
               <el-switch
                 v-model="form.entryFilePathModifyEnabled"
-                active-text="修改"
-                inactive-text="不修改"
+                :active-text="settingText.modify"
+                :inactive-text="settingText.onlyView"
               />
             </el-form-item>
-            <el-form-item label="项目入口文件位置">
+            <el-form-item :label="settingText.entryFilePath">
               <div class="entry-picker-block">
                 <el-cascader
                   v-model="entryPathCascaderValue"
@@ -120,12 +120,12 @@
                   filterable
                   :disabled="!isEntryFileEditable"
                   :show-all-levels="false"
-                  placeholder="请选择项目入口文件"
+                  :placeholder="settingText.chooseEntryFile"
                   @change="onEntryPathChange"
                   @clear="onEntryClear"
                 />
                 <div class="selected-line">
-                  <span class="selected-label">已选择：</span>
+                  <span class="selected-label">{{ settingText.selected }}</span>
                   <span class="selected-value">{{ selectedEntryText || ' ' }}</span>
                 </div>
               </div>
@@ -135,20 +135,20 @@
 
         <div v-else-if="currentStep === 3" class="step-content">
           <el-form label-position="top">
-            <el-form-item v-if="hasOriginalDevCommand()" label="是否修改开发启动命令">
+            <el-form-item v-if="hasOriginalDevCommand()" :label="settingText.modifyDevCommand">
               <el-switch
                 v-model="form.devCommandModifyEnabled"
-                active-text="修改"
-                inactive-text="不修改"
+                :active-text="settingText.modify"
+                :inactive-text="settingText.onlyView"
               />
             </el-form-item>
-            <el-form-item label="开发启动命令">
+            <el-form-item :label="settingText.devCommand">
               <el-input
                 v-model="form.devCommand"
                 type="textarea"
                 :rows="4"
                 :disabled="!isDevCommandEditable"
-                placeholder="例如：python main.py 或 python manage.py runserver 0.0.0.0:8000"
+                :placeholder="settingText.devCommandPlaceholder"
               />
             </el-form-item>
           </el-form>
@@ -156,20 +156,20 @@
 
         <div v-else-if="currentStep === 4" class="step-content">
           <el-form label-position="top">
-            <el-form-item v-if="hasOriginalDeployCommand()" label="是否修改部署启动命令">
+            <el-form-item v-if="hasOriginalDeployCommand()" :label="settingText.modifyDeployCommand">
               <el-switch
                 v-model="form.deployCommandModifyEnabled"
-                active-text="修改"
-                inactive-text="不修改"
+                :active-text="settingText.modify"
+                :inactive-text="settingText.onlyView"
               />
             </el-form-item>
-            <el-form-item label="部署启动命令">
+            <el-form-item :label="settingText.deployCommand">
               <el-input
                 v-model="form.deployCommand"
                 type="textarea"
                 :rows="4"
                 :disabled="!isDeployCommandEditable"
-                placeholder="例如：gunicorn main:app --bind 0.0.0.0:{{port}}"
+                :placeholder="settingText.deployCommandPlaceholder"
               />
             </el-form-item>
           </el-form>
@@ -384,30 +384,30 @@
 
         <div v-else-if="currentStep === 6" class="step-content">
           <el-form label-position="top">
-            <el-form-item label="是否启用数据库配置">
+            <el-form-item :label="settingText.enableDatabaseConfig">
               <el-switch
                 v-model="enableDatabaseConfig"
-                active-text="启用"
-                inactive-text="不启用"
+                :active-text="settingText.enabled"
+                :inactive-text="settingText.disabled"
               />
             </el-form-item>
 
-            <el-form-item v-if="enableDatabaseConfig && hasOriginalDatabaseConfig()" label="是否修改数据库信息">
+            <el-form-item v-if="enableDatabaseConfig && hasOriginalDatabaseConfig()" :label="settingText.modifyDatabaseInfo">
               <el-switch
                 v-model="form.databaseModifyEnabled"
-                active-text="修改"
-                inactive-text="不修改"
+                :active-text="settingText.modify"
+                :inactive-text="settingText.onlyView"
               />
             </el-form-item>
 
-            <el-form-item v-if="enableDatabaseConfig" label="数据库名称">
-              <el-input v-model="form.databaseName" :disabled="!isDatabaseConfigEditable" placeholder="例如 my_project" />
+            <el-form-item v-if="enableDatabaseConfig" :label="settingText.databaseName">
+              <el-input v-model="form.databaseName" :disabled="!isDatabaseConfigEditable" :placeholder="settingText.databaseNamePlaceholder" />
             </el-form-item>
-            <el-form-item v-if="enableDatabaseConfig" label="数据库IP">
+            <el-form-item v-if="enableDatabaseConfig" :label="settingText.databaseIp">
               <el-select
                 v-model="form.databaseHost"
                 :disabled="!isDatabaseConfigEditable"
-                placeholder="可选择或手动输入数据库IP"
+                :placeholder="settingText.databaseIpPlaceholder"
                 filterable
                 allow-create
                 default-first-option
@@ -422,22 +422,22 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="enableDatabaseConfig" label="数据库端口">
-              <el-input v-model="form.databasePort" :disabled="!isDatabaseConfigEditable" placeholder="例如 3306" />
+            <el-form-item v-if="enableDatabaseConfig" :label="settingText.databasePort">
+              <el-input v-model="form.databasePort" :disabled="!isDatabaseConfigEditable" :placeholder="settingText.databasePortPlaceholder" />
             </el-form-item>
-            <el-form-item v-if="enableDatabaseConfig" label="数据库账号">
-              <el-input v-model="form.databaseUser" :disabled="!isDatabaseConfigEditable" placeholder="例如 root" />
+            <el-form-item v-if="enableDatabaseConfig" :label="settingText.databaseUser">
+              <el-input v-model="form.databaseUser" :disabled="!isDatabaseConfigEditable" :placeholder="settingText.databaseUserPlaceholder" />
             </el-form-item>
-            <el-form-item v-if="enableDatabaseConfig" label="数据库密码">
+            <el-form-item v-if="enableDatabaseConfig" :label="settingText.databasePassword">
               <el-input
                 v-model="form.databasePassword"
                 :disabled="!isDatabaseConfigEditable"
                 type="password"
                 show-password
-                placeholder="请输入数据库密码"
+                :placeholder="settingText.databasePasswordPlaceholder"
               />
             </el-form-item>
-            <el-form-item v-if="enableDatabaseConfig" label="连接测试">
+            <el-form-item v-if="enableDatabaseConfig" :label="settingText.databaseConnectionTest">
               <div class="db-check-row">
                 <el-button
                   type="primary"
@@ -445,7 +445,7 @@
                   :disabled="!isDatabaseConfigEditable"
                   @click="checkDatabaseConnectionInSetting"
                 >
-                  {{ databaseChecked ? '已通过' : 'Check' }}
+                  {{ databaseChecked ? settingText.passed : settingText.check }}
                 </el-button>
                 <span class="db-check-hint" :class="{ ok: databaseChecked }">
                   {{ databaseCheckMessage }}
@@ -457,27 +457,27 @@
 
         <div v-else class="step-content">
           <el-descriptions :column="1" border size="small">
-            <el-descriptions-item label="项目名称">{{ form.projectName }}</el-descriptions-item>
-            <el-descriptions-item label="项目描述">{{ form.description || '未设置' }}</el-descriptions-item>
-            <el-descriptions-item label="Conda环境">{{ form.condaEnvName || '未设置' }}</el-descriptions-item>
-            <el-descriptions-item label="项目入口文件位置">{{ selectedEntryText || '未设置' }}</el-descriptions-item>
-            <el-descriptions-item label="Nginx配置">
-              {{ form.nginxEnabled ? '启用' : '不启用' }}
+            <el-descriptions-item :label="settingText.projectName">{{ form.projectName }}</el-descriptions-item>
+            <el-descriptions-item :label="settingText.projectDescription">{{ form.description || settingText.notSet }}</el-descriptions-item>
+            <el-descriptions-item :label="settingText.condaEnv">{{ form.condaEnvName || settingText.notSet }}</el-descriptions-item>
+            <el-descriptions-item :label="settingText.entryFilePath">{{ selectedEntryText || settingText.notSet }}</el-descriptions-item>
+            <el-descriptions-item :label="settingText.nginxConfig">
+              {{ form.nginxEnabled ? settingText.enabled : settingText.disabled }}
             </el-descriptions-item>
             <template v-if="form.nginxEnabled">
-              <el-descriptions-item label="使用的Nginx IP地址">
-                {{ form.nginxServerIp || form.serverIp || '未配置' }}
+              <el-descriptions-item :label="settingText.usedNginxIp">
+                {{ form.nginxServerIp || form.serverIp || settingText.notConfigured }}
               </el-descriptions-item>
-              <el-descriptions-item label="使用的Nginx配置文件地址">
-                {{ form.nginxConfPath || '未获取' }}
+              <el-descriptions-item :label="settingText.usedNginxConfPath">
+                {{ form.nginxConfPath || settingText.notFetched }}
               </el-descriptions-item>
-              <el-descriptions-item label="使用Nginx前端端口">
-                {{ form.frontendPort || '未填写' }}
+              <el-descriptions-item :label="settingText.usedNginxFrontendPort">
+                {{ form.frontendPort || settingText.notFilled }}
               </el-descriptions-item>
-              <el-descriptions-item label="后端部署端口">
-                {{ form.backendDeployPort || '未填写' }}
+              <el-descriptions-item :label="settingText.backendDeployPort">
+                {{ form.backendDeployPort || settingText.notFilled }}
               </el-descriptions-item>
-              <el-descriptions-item label="Nginx详细配置预览">
+              <el-descriptions-item :label="settingText.nginxDetailPreview">
                 <el-popover
                   placement="right"
                   :width="560"
@@ -487,14 +487,14 @@
                 >
                   <template #reference>
                     <div class="nginx-summary-trigger" :class="{ empty: !form.nginxConfigText }">
-                      <span>{{ form.nginxConfigText ? '已配置' : '未设置' }}</span>
+                      <span>{{ form.nginxConfigText ? settingText.configured : settingText.notSet }}</span>
                       <el-icon v-if="form.nginxConfigText" class="nginx-summary-icon">
                         <View />
                       </el-icon>
                     </div>
                   </template>
                   <div class="nginx-preview-editor nginx-summary-popover-content">
-                    <div class="nginx-preview-editor__header">配置详细配置信息</div>
+                    <div class="nginx-preview-editor__header">{{ settingText.nginxDetailConfigInfo }}</div>
                     <el-input
                       :model-value="form.nginxConfigText"
                       type="textarea"
@@ -506,20 +506,20 @@
                 </el-popover>
               </el-descriptions-item>
             </template>
-            <el-descriptions-item label="开发启动命令">{{ form.devCommand || '未设置' }}</el-descriptions-item>
-            <el-descriptions-item label="部署启动命令">{{ form.deployCommand || '未设置' }}</el-descriptions-item>
-            <el-descriptions-item label="数据库配置">
-              {{ enableDatabaseConfig ? '启用' : '不启用' }}
+            <el-descriptions-item :label="settingText.devCommand">{{ form.devCommand || settingText.notSet }}</el-descriptions-item>
+            <el-descriptions-item :label="settingText.deployCommand">{{ form.deployCommand || settingText.notSet }}</el-descriptions-item>
+            <el-descriptions-item :label="settingText.databaseConfig">
+              {{ enableDatabaseConfig ? settingText.enabled : settingText.disabled }}
             </el-descriptions-item>
             <template v-if="enableDatabaseConfig">
-              <el-descriptions-item label="数据库名称">{{ form.databaseName || '未设置' }}</el-descriptions-item>
-              <el-descriptions-item label="数据库地址">
+              <el-descriptions-item :label="settingText.databaseName">{{ form.databaseName || settingText.notSet }}</el-descriptions-item>
+              <el-descriptions-item :label="settingText.databaseAddress">
                 {{ (form.databaseHost || '-') + ':' + (form.databasePort || '-') }}
               </el-descriptions-item>
-              <el-descriptions-item label="数据库账号">{{ form.databaseUser || '未设置' }}</el-descriptions-item>
-              <el-descriptions-item label="数据库密码">
+              <el-descriptions-item :label="settingText.databaseUser">{{ form.databaseUser || settingText.notSet }}</el-descriptions-item>
+              <el-descriptions-item :label="settingText.databasePassword">
                 <span class="summary-password-row">
-                  <span>{{ databasePasswordVisible ? (form.databasePassword || '未设置') : maskedDatabasePassword }}</span>
+                  <span>{{ databasePasswordVisible ? (form.databasePassword || settingText.notSet) : maskedDatabasePassword }}</span>
                   <el-icon
                     v-if="form.databasePassword"
                     class="summary-password-icon"
@@ -537,13 +537,13 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <div class="step-index">步骤 {{ currentStep + 1 }} / {{ stepItems.length }}</div>
+        <div class="step-index">{{ settingText.stepPrefix }} {{ currentStep + 1 }} / {{ stepItems.length }}</div>
         <div class="footer-actions">
-          <el-button v-if="showResetButton" @click="resetWorkflow">重新设置</el-button>
-          <el-button @click="emit('update:modelValue', false)">取消</el-button>
-          <el-button v-if="currentStep > 0" @click="goPrev">上一步</el-button>
-          <el-button v-if="currentStep < stepItems.length - 1" type="primary" @click="goNext">下一步</el-button>
-          <el-button v-else type="primary" @click="onConfirm">确认</el-button>
+          <el-button v-if="showResetButton" @click="resetWorkflow">{{ settingText.reset }}</el-button>
+          <el-button @click="emit('update:modelValue', false)">{{ settingText.cancel }}</el-button>
+          <el-button v-if="currentStep > 0" @click="goPrev">{{ settingText.prevStep }}</el-button>
+          <el-button v-if="currentStep < stepItems.length - 1" type="primary" @click="goNext">{{ settingText.nextStep }}</el-button>
+          <el-button v-else type="primary" @click="onConfirm">{{ settingText.confirm }}</el-button>
         </div>
       </div>
     </template>
@@ -556,6 +556,8 @@ import { ElInput, ElMessage, ElMessageBox } from 'element-plus'
 import { Hide, Loading, View } from '@element-plus/icons-vue'
 import { projectApi } from '@/api/project'
 import { getErrorMessage } from '@/utils/request'
+import { FRONTEND_DIST_BASE_PATH } from '@/config/project/project.paths.config'
+import { buildProjectNginxServerTemplate } from '@/config/project/nginx-template.config'
 import {
   DB_PORT_MAX,
   DB_PORT_MIN,
@@ -580,6 +582,11 @@ import {
   sanitizePort,
   stripNginxComments,
 } from './project-setting/projectSettingUtils'
+import {
+  settingConfirmMessages,
+  settingMessageFactory,
+  settingMessages,
+} from './project-setting/projectSettingMessages'
 import { buildCascaderPathValues, toProjectRelativePath } from '@/views/dashboard/composables/dialogUtils'
 
 const props = defineProps(['modelValue', 'width', 'fields', 'form'])
@@ -590,7 +597,7 @@ const enableDatabaseConfig = ref(false)
 const databaseChecked = ref(false)
 const databaseChecking = ref(false)
 const databasePasswordVisible = ref(false)
-const databaseCheckMessage = ref('请先测试数据库连接')
+const databaseCheckMessage = ref(settingMessages.databaseCheckRequired)
 const originalDatabasePolicyHandled = ref(false)
 const condaEnvOptions = ref([])
 const condaEnvLoading = ref(false)
@@ -705,7 +712,7 @@ const restoreOriginalDeployCommand = () => {
 
 const maskedDatabasePassword = computed(() => {
   const password = String(props.form?.databasePassword || '')
-  return password ? '*'.repeat(Math.max(6, password.length)) : '未设置'
+  return password ? '*'.repeat(Math.max(6, password.length)) : settingText.notSet
 })
 
 const databaseHostOptions = computed(() => {
@@ -808,11 +815,11 @@ const hasNewConfDraft = computed(() => {
 const newConfTip = computed(() => {
   const dir = String(props.form?.nginxNewConfDirPath || '').trim()
   const fileName = String(props.form?.nginxNewConfFileName || '').trim()
-  if (!dir && !fileName) return '右侧用于创建新的 .conf 配置文件；与左侧已有配置文件二选一。'
-  if (!dir) return '请先选择配置目录。'
-  if (!fileName) return `已选择目录：${dir}`
-  if (!isValidConfFileName(fileName)) return '文件名必须以 .conf 结尾，且不能包含 / 或 \\。'
-  return `最终路径：${joinPath(dir, fileName)}`
+  if (!dir && !fileName) return settingText.newConfEmptyTip
+  if (!dir) return settingText.newConfDirRequiredTip
+  if (!fileName) return settingMessageFactory.newConfSelectedDir(dir)
+  if (!isValidConfFileName(fileName)) return settingText.newConfInvalidFileTip
+  return settingMessageFactory.newConfFinalPath(joinPath(dir, fileName))
 })
 
 const selectedNginxDirText = computed(() => String(props.form?.nginxNewConfDirPath || '').trim())
@@ -884,13 +891,13 @@ const isValidDbPort = (value) => {
 const collectEnabledPorts = () => {
   const ports = []
   if (hasText(props.form?.backendDevPort)) {
-    ports.push({ label: '后端开发端口', value: sanitizePort(props.form.backendDevPort) })
+    ports.push({ label: settingText.backendDevPort, value: sanitizePort(props.form.backendDevPort) })
   }
   if (hasText(props.form?.backendDeployPort)) {
-    ports.push({ label: '后端部署端口', value: sanitizePort(props.form.backendDeployPort) })
+    ports.push({ label: settingText.backendDeployPort, value: sanitizePort(props.form.backendDeployPort) })
   }
   if (props.form?.nginxEnabled && hasText(props.form?.frontendPort)) {
-    ports.push({ label: 'Nginx前端端口', value: sanitizePort(props.form.frontendPort) })
+    ports.push({ label: settingText.nginxFrontendPortLabel, value: sanitizePort(props.form.frontendPort) })
   }
   return ports
 }
@@ -901,7 +908,7 @@ const ensurePortsDistinct = () => {
   for (const item of ports) {
     if (seen.has(item.value)) {
       const other = seen.get(item.value)
-      ElMessage.warning(`${other} 与 ${item.label} 不能相同`)
+      ElMessage.warning(settingMessageFactory.duplicatePort(other, item.label))
       return false
     }
     seen.set(item.value, item.label)
@@ -936,7 +943,7 @@ const loadCondaEnvOptions = async () => {
     condaEnvOptions.value = Array.isArray(data.envs) ? data.envs.map((x) => String(x || '').trim()).filter(Boolean) : []
   } catch (error) {
     condaEnvOptions.value = []
-    ElMessage.warning(getErrorMessage(error, '查询Conda环境列表失败'))
+    ElMessage.warning(getErrorMessage(error, settingMessages.condaEnvListLoadFailed))
   } finally {
     condaEnvLoading.value = false
   }
@@ -971,19 +978,19 @@ const confirmCondaSwitchPolicy = async (isExistingEnv) => {
     condaPythonVersionDraft.value = String(props.form?.pythonVersion || originalBaseConfig.pythonVersion || '').trim()
     try {
       await ElMessageBox({
-        title: 'Conda环境处理',
+        title: settingConfirmMessages.condaPolicyTitle,
         type: 'warning',
         customClass: 'original-conda-policy-box',
         distinguishCancelAndClose: true,
         showCancelButton: true,
-        confirmButtonText: '保留',
-        cancelButtonText: '不保留',
+        confirmButtonText: settingConfirmMessages.retainButtonText,
+        cancelButtonText: settingConfirmMessages.dropButtonText,
         closeOnClickModal: false,
         beforeClose: (action, instance, done) => {
           if ((action === 'confirm' || action === 'cancel') && !isExistingEnv) {
             const version = String(condaPythonVersionDraft.value || '').trim()
             if (!version) {
-              ElMessage.warning('请填写Python版本')
+        ElMessage.warning(settingMessages.pythonVersionRequired)
               return
             }
             props.form.pythonVersion = version
@@ -994,14 +1001,14 @@ const confirmCondaSwitchPolicy = async (isExistingEnv) => {
           'div',
           { style: 'font-size:14px;line-height:1.8;color:#303133;font-weight:600;padding:2px 0 4px;' },
           [
-            h('div', null, `是否保留原【${original}】Conda环境`),
-            !isExistingEnv ? h('div', { style: 'margin-top:6px;color:#606266;font-weight:500;' }, `新Conda环境【${nextName}】不存在，请填写Python版本；最终确认后会创建该环境。`) : null,
+            h('div', null, settingMessageFactory.condaPolicyQuestion(original)),
+            !isExistingEnv ? h('div', { style: 'margin-top:6px;color:#606266;font-weight:500;' }, settingMessageFactory.condaCreatePythonTip(nextName)) : null,
             !isExistingEnv ? h(ElInput, {
               modelValue: condaPythonVersionDraft.value,
               'onUpdate:modelValue': (value) => {
                 condaPythonVersionDraft.value = String(value || '').trim()
               },
-              placeholder: '例如 3.10',
+              placeholder: settingText.pythonVersionPlaceholder,
               style: 'margin-top:10px;width:100%;',
               clearable: true,
             }) : null,
@@ -1021,7 +1028,7 @@ const confirmCondaSwitchPolicy = async (isExistingEnv) => {
       }
       props.form.dropOriginalCondaEnv = true
       condaPolicyHandled.value = true
-      ElMessage.warning(`已选择不保留原【${original}】Conda环境，将在点击确认设置后删除`)
+      ElMessage.warning(settingMessageFactory.dropOriginalCondaSelected(original))
       return true
     }
   }
@@ -1039,7 +1046,7 @@ const checkDescriptionChange = () => {
   const value = String(props.form?.description || '').trim()
   const original = String(originalBaseConfig.description || '').trim()
   if (value === original) {
-    ElMessage.warning('和原项目描述一样，请修改')
+    ElMessage.warning(settingMessages.descriptionSameAsOriginal)
     return false
   }
   return true
@@ -1057,13 +1064,13 @@ const checkCondaEnvName = async () => {
   const original = String(originalBaseConfig.condaEnvName || '').trim()
   if (!value) {
     condaEnvNameChecked.value = false
-    condaEnvCheckMessage.value = '请填写Conda环境'
+    condaEnvCheckMessage.value = settingMessages.condaEnvRequired
     ElMessage.warning(condaEnvCheckMessage.value)
     return false
   }
   if (value === original) {
     condaEnvNameChecked.value = false
-    condaEnvCheckMessage.value = '和原Conda环境一样，请修改'
+    condaEnvCheckMessage.value = settingMessages.condaEnvSameAsOriginal
     ElMessage.warning(condaEnvCheckMessage.value)
     return false
   }
@@ -1083,19 +1090,19 @@ const checkCondaEnvName = async () => {
   }
 
   condaEnvNameChecked.value = true
-  condaEnvCheckMessage.value = exists ? '将切换到已有Conda环境' : '将创建新的Conda环境'
+  condaEnvCheckMessage.value = exists ? settingMessages.condaSwitchToExisting : settingMessages.condaCreateNew
   return true
 }
 
 const checkPortByBackend = async (portValue, checkNginxConf = false) => {
   const projectId = Number(props.form?.projectId || 0)
   if (!projectId) {
-    ElMessage.warning('项目ID缺失，无法校验端口')
+    ElMessage.warning(settingMessages.projectIdMissingForPortCheck)
     return false
   }
   const text = sanitizePort(portValue)
   if (!/^\d+$/.test(text)) {
-    ElMessage.warning('端口必须为数字')
+    ElMessage.warning(settingMessages.portMustBeNumber)
     return false
   }
   const port = Number(text)
@@ -1109,7 +1116,7 @@ const checkPortByBackend = async (portValue, checkNginxConf = false) => {
     })
     return true
   } catch (error) {
-    ElMessage.warning(getErrorMessage(error, '端口校验失败'))
+    ElMessage.warning(getErrorMessage(error, settingMessages.portCheckFailed))
     return false
   } finally {
     validatingPort.value = false
@@ -1162,7 +1169,7 @@ const restoreOriginalDatabaseConfig = () => {
   props.form.databaseModifyEnabled = false
   props.form.dropOriginalDatabase = false
   databaseChecked.value = hasOriginalDatabaseConfig()
-  databaseCheckMessage.value = databaseChecked.value ? '当前数据库配置未修改，可直接使用' : '请先测试数据库连接'
+  databaseCheckMessage.value = databaseChecked.value ? settingMessages.databaseUnchangedUsable : settingMessages.databaseCheckRequired
   originalDatabasePolicyHandled.value = false
 }
 
@@ -1393,10 +1400,7 @@ const getFrontendRoot = () => {
   const projectName = String(props.form?.projectName || '').trim()
   const existing = String(props.form?.frontendPath || '').trim()
   if (existing) return existing
-  const username = String(props.form?.currentUsername || 'root').trim() || 'root'
-  const role = String(props.form?.currentRole || 'user').trim()
-  const baseDir = '/data/frontend_dist'
-  return projectName ? `${baseDir}/${projectName}` : baseDir
+  return projectName ? `${FRONTEND_DIST_BASE_PATH}/${projectName}` : FRONTEND_DIST_BASE_PATH
 }
 
 const buildNginxPreview = () => {
@@ -1405,34 +1409,13 @@ const buildNginxPreview = () => {
   const nginxIp = String(props.form?.nginxServerIp || '').trim()
   const serverIp = String(props.form?.serverIp || '').trim()
   const frontendRoot = getFrontendRoot()
-  return `server {
-    listen       ${frontendPort};
-    server_name  ${nginxIp};
-
-    location / {
-        root   ${frontendRoot};
-        index  index.html index.htm;
-    }
-
-    location /api {
-        proxy_pass   http://${serverIp}:${backendPort}/api;
-        add_header 'Access-Control-Allow-Origin' '*';
-        add_header 'Access-Control-Allow-Credentials' 'true';
-        proxy_buffering off;
-        #proxy_set_header Connection "";
-        client_body_buffer_size 4096m;
-        client_max_body_size 4096m;
-        proxy_max_temp_file_size 4096m;
-        proxy_send_timeout 1800;
-        proxy_read_timeout 1800;
-        proxy_next_upstream http_500 http_504 http_502 error timeout invalid_header;
-    }
-
-    error_page 404 /404.html;
-
-    location = /40x.html {
-    }
-}`
+  return buildProjectNginxServerTemplate({
+    frontendPort,
+    backendPort,
+    nginxIp,
+    serverIp,
+    frontendRoot,
+  })
 }
 
 const refreshNginxPreview = (options = {}) => {
@@ -1490,25 +1473,25 @@ const confirmNginxPreview = async () => {
   const frontendPort = String(form.frontendPort || '').trim()
   const backendPort = String(form.backendDeployPort || '').trim()
   if (!draft) {
-    ElMessage.warning('Nginx详细配置不能为空')
+    ElMessage.warning(settingMessages.nginxConfigRequired)
     return
   }
   if (!nginxConfigHasListenPort(draft, frontendPort)) {
-    ElMessage.warning(`Nginx详细配置必须包含 listen ${frontendPort}`)
+    ElMessage.warning(settingMessageFactory.nginxListenRequired(frontendPort))
     return
   }
   if (!nginxConfigHasProxyPassPort(draft, backendPort)) {
-    ElMessage.warning(`Nginx详细配置必须包含 proxy_pass 后端端口 ${backendPort}`)
+    ElMessage.warning(settingMessageFactory.nginxProxyPassRequired(backendPort))
     return
   }
   if (hasOriginalNginxConfig() && form.nginxModifyEnabled) {
     try {
       await ElMessageBox.confirm(
-        '这会删除原配置信息并使用新的Nginx配置，是否确认？',
-        '确认修改Nginx配置',
+        settingConfirmMessages.nginxModifyContent,
+        settingConfirmMessages.nginxModifyTitle,
         {
-          confirmButtonText: '确认',
-          cancelButtonText: '取消',
+          confirmButtonText: settingConfirmMessages.confirmButtonText,
+          cancelButtonText: settingConfirmMessages.cancelButtonText,
           type: 'warning',
         },
       )
@@ -1539,11 +1522,11 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
     ? (configuredConfigText || String(originalNginxConfig.configText || '').trim())
     : configuredConfigText
   if (!serverIp) {
-    ElMessage.warning('项目服务器IP缺失')
+    ElMessage.warning(settingMessages.projectServerIpMissing)
     return false
   }
   if (!nginxServerIp) {
-    ElMessage.warning('请选择Nginx服务器IP')
+    ElMessage.warning(settingMessages.nginxServerIpRequired)
     return false
   }
   try {
@@ -1559,7 +1542,7 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
     const confFiles = Array.isArray(data.conf_files) ? data.conf_files : []
     const newConfDirs = Array.isArray(data.new_conf_dirs) ? data.new_conf_dirs : []
     if (!confPath && !confFiles.length && !newConfDirs.length) {
-      ElMessage.warning('请先确认Nginx详细配置')
+      ElMessage.warning(settingMessages.nginxConfirmDetailRequired)
       clearNginxCheckState({ clearServerIp: false, preserveConf: canPreserveOriginalConf })
       return false
     }
@@ -1586,11 +1569,11 @@ const checkSettingNginxAvailability = async (showSuccess = true) => {
     props.form.nginxPreviewDraft = props.form.nginxPreviewText
     props.form.nginxPreviewConfirmed = !!selectedConfigText
     props.form.nginxChecked = true
-    if (showSuccess) ElMessage.success('Nginx服务可用')
+    if (showSuccess) ElMessage.success(settingMessages.nginxServiceAvailable)
     return true
   } catch (error) {
     clearNginxCheckState({ clearServerIp: false, preserveConf: canPreserveOriginalConf })
-    ElMessage.error(getErrorMessage(error, 'Nginx服务不可用'))
+    ElMessage.error(getErrorMessage(error, settingMessages.nginxServiceUnavailable))
     return false
   } finally {
     props.form.nginxChecking = false
@@ -1605,7 +1588,7 @@ const validateNginxPortPair = () => {
   if (serverIp && nginxIp && serverIp === nginxIp && frontend && backend && frontend === backend) {
     props.form.nginxFrontendPortChecked = false
     props.form.nginxBackendPortChecked = false
-    ElMessage.warning('服务器IP和Nginx服务器IP相同时，Nginx前端端口和后端部署端口不能相同')
+    ElMessage.warning(settingMessages.nginxSameServerPortConflict)
     return false
   }
   return true
@@ -1614,18 +1597,18 @@ const validateNginxPortPair = () => {
 const checkSettingNginxPort = async (kind) => {
   if (!props.form?.nginxEnabled) return true
   if (!hasText(props.form.nginxConfPath)) {
-    ElMessage.warning('请先确认Nginx详细配置')
+    ElMessage.warning(settingMessages.nginxConfirmDetailRequired)
     return false
   }
   const isFrontend = kind === 'frontend'
   const key = isFrontend ? 'frontendPort' : 'backendDeployPort'
   const checkedKey = isFrontend ? 'nginxFrontendPortChecked' : 'nginxBackendPortChecked'
-  const label = isFrontend ? 'Nginx前端端口' : '后端部署端口'
+  const label = isFrontend ? settingText.nginxFrontendPortLabel : settingText.backendDeployPort
   const portText = String(props.form[key] || '').trim()
   props.form[checkedKey] = false
   props.form.nginxPreviewConfirmed = false
   if (!isValidPort(portText)) {
-  if (portText) ElMessage.warning(`${label}需在 ${PORT_MIN}-${PORT_MAX} 范围内`)
+  if (portText) ElMessage.warning(settingMessageFactory.portRangeInvalid(label, PORT_MIN, PORT_MAX))
     return false
   }
   if (!validateNginxPortPair()) return false
@@ -1642,10 +1625,10 @@ const checkSettingNginxPort = async (kind) => {
     props.form.nginxConfigText = ''
     refreshNginxPreview()
     props.form.nginxConfigText = oldConfigText
-    ElMessage.success(`${label}可用`)
+    ElMessage.success(settingMessageFactory.portAvailable(label))
     return true
   } catch (error) {
-    ElMessage.warning(getErrorMessage(error, `${label}校验失败`))
+    ElMessage.warning(getErrorMessage(error, settingMessageFactory.portCheckFailed(label)))
     return false
   } finally {
     validatingPort.value = false
@@ -1661,20 +1644,20 @@ const confirmOriginalDatabasePolicy = async () => {
 
   try {
     await ElMessageBox({
-      title: '原数据库处理',
+      title: settingConfirmMessages.databasePolicyTitle,
       type: 'warning',
       customClass: 'original-database-policy-box',
       distinguishCancelAndClose: true,
       showCancelButton: true,
-      confirmButtonText: '保留',
-      cancelButtonText: '不保留',
+      confirmButtonText: settingConfirmMessages.retainButtonText,
+      cancelButtonText: settingConfirmMessages.dropButtonText,
       closeOnClickModal: false,
       message: () => h(
         'div',
         {
           style: 'font-size:14px;line-height:1.8;color:#303133;font-weight:600;padding:2px 0 4px;',
         },
-        '是否保留原数据库，如果选择不保留则会直接删除原数据库。',
+        settingConfirmMessages.databasePolicyContent,
       ),
     })
     props.form.dropOriginalDatabase = false
@@ -1684,7 +1667,7 @@ const confirmOriginalDatabasePolicy = async () => {
     if (action !== 'cancel') return false
     props.form.dropOriginalDatabase = true
     originalDatabasePolicyHandled.value = true
-    ElMessage.warning('已选择不保留原数据库，将在点击确认设置后删除')
+    ElMessage.warning(settingMessages.dropOriginalDatabaseSelected)
     return true
   }
 }
@@ -1694,15 +1677,15 @@ const checkDatabaseConnectionInSetting = async () => {
   if (!isDatabaseConfigEditable.value) return true
 
   if (!hasText(props.form.databaseHost)) {
-    ElMessage.warning('请填写数据库IP')
+    ElMessage.warning(settingMessages.databaseHostRequired)
     return false
   }
   if (!isValidDbPort(props.form.databasePort)) {
-    ElMessage.warning(`数据库端口不合法（${DB_PORT_MIN}-${DB_PORT_MAX}）`)
+    ElMessage.warning(settingMessageFactory.dbPortInvalid(DB_PORT_MIN, DB_PORT_MAX))
     return false
   }
   if (!hasText(props.form.databaseUser)) {
-    ElMessage.warning('请填写数据库账号')
+    ElMessage.warning(settingMessages.databaseUserRequired)
     return false
   }
 
@@ -1720,21 +1703,21 @@ const checkDatabaseConnectionInSetting = async () => {
       const policyOk = await confirmOriginalDatabasePolicy()
       if (!policyOk) {
         databaseChecked.value = false
-        databaseCheckMessage.value = '请先测试数据库连接'
+        databaseCheckMessage.value = settingMessages.databaseCheckRequired
         return false
       }
       databaseChecked.value = true
-      databaseCheckMessage.value = '连接成功，该数据库不存在，可以创建使用'
+      databaseCheckMessage.value = settingMessages.databaseConnectSuccessCanCreate
       ElMessage.success(databaseCheckMessage.value)
       return true
     }
     databaseChecked.value = false
-    databaseCheckMessage.value = '连接成功，但该数据库已经存在，不可创建，请更改数据库名称'
+    databaseCheckMessage.value = settingMessages.databaseExistsChangeName
     ElMessage.warning(databaseCheckMessage.value)
     return false
   } catch {
     databaseChecked.value = false
-    databaseCheckMessage.value = '连接失败'
+    databaseCheckMessage.value = settingMessages.databaseConnectFailed
     ElMessage.warning(databaseCheckMessage.value)
     return false
   } finally {
@@ -1747,7 +1730,7 @@ const resetEntryRoot = () => {
   entryPathOptions.value = [
     {
       value: ROOT_PATH_VALUE,
-      label: backendPath ? `${backendPath}/` : '项目目录/',
+      label: backendPath ? `${backendPath}/` : settingText.projectDirFallback,
       leaf: false,
     },
   ]
@@ -1830,7 +1813,7 @@ const initWorkflow = () => {
     }
   }
   databaseChecked.value = hasOriginalDatabaseConfig()
-  databaseCheckMessage.value = databaseChecked.value ? '当前数据库配置未修改，可直接使用' : '请先测试数据库连接'
+  databaseCheckMessage.value = databaseChecked.value ? settingMessages.databaseUnchangedUsable : settingMessages.databaseCheckRequired
   originalDatabasePolicyHandled.value = false
   databasePasswordVisible.value = false
 
@@ -2046,7 +2029,7 @@ watch(
     if (!props.modelValue || !enableDatabaseConfig.value || !hasOriginalDatabaseConfig()) return
     if (enabled) {
       databaseChecked.value = false
-      databaseCheckMessage.value = '请先测试数据库连接'
+      databaseCheckMessage.value = settingMessages.databaseCheckRequired
       originalDatabasePolicyHandled.value = false
     } else {
       props.form.dropOriginalDatabase = false
@@ -2060,7 +2043,7 @@ watch(
   () => {
     if (enableDatabaseConfig.value && isDatabaseConfigEditable.value) {
       databaseChecked.value = false
-      databaseCheckMessage.value = '请先测试数据库连接'
+      databaseCheckMessage.value = settingMessages.databaseCheckRequired
       originalDatabasePolicyHandled.value = false
     }
   },
@@ -2118,7 +2101,7 @@ const loadEntryPathChildren = async (node, resolve, reject) => {
     } else {
       resolve([])
     }
-    ElMessage.error(getErrorMessage(error, '加载入口文件路径失败'))
+    ElMessage.error(getErrorMessage(error, settingMessages.entryPathLoadFailed))
   }
 }
 
@@ -2318,11 +2301,11 @@ const validateCurrentStep = async () => {
 
   if (currentStep.value === 2) {
     if (!hasText(props.form.entryFilePath)) {
-      ElMessage.warning('请先选择项目入口文件位置')
+      ElMessage.warning(settingMessages.entryFileRequired)
       return false
     }
     if (props.form?.entryFilePathModifyEnabled && String(props.form.entryFilePath || '').trim() === originalBaseConfig.entryFilePath) {
-      ElMessage.warning('和原项目入口文件一样，请修改')
+      ElMessage.warning(settingMessages.sameEntryFile)
       return false
     }
     return true
@@ -2330,7 +2313,7 @@ const validateCurrentStep = async () => {
 
   if (currentStep.value === 3) {
     if (props.form?.devCommandModifyEnabled && String(props.form.devCommand || '').trim() === String(originalBaseConfig.devCommand || '').trim()) {
-      ElMessage.warning('和原开发启动命令一样，请修改')
+      ElMessage.warning(settingMessages.sameDevCommand)
       return false
     }
     return true
@@ -2338,7 +2321,7 @@ const validateCurrentStep = async () => {
 
   if (currentStep.value === 4) {
     if (props.form?.deployCommandModifyEnabled && String(props.form.deployCommand || '').trim() === String(originalBaseConfig.deployCommand || '').trim()) {
-      ElMessage.warning('和原部署启动命令一样，请修改')
+      ElMessage.warning(settingMessages.sameDeployCommand)
       return false
     }
     return true
@@ -2353,23 +2336,23 @@ const validateCurrentStep = async () => {
       return true
     }
     if (!hasText(props.form.nginxServerIp)) {
-      ElMessage.warning('请选择Nginx服务器IP')
+      ElMessage.warning(settingMessages.nginxServerIpRequired)
       return false
     }
     if (!props.form.nginxChecked) {
-      ElMessage.warning('请先检测Nginx服务')
+      ElMessage.warning(settingMessages.nginxCheckRequired)
       return false
     }
     if (!hasText(props.form.nginxConfPath)) {
-      ElMessage.warning('请选择已有Nginx配置文件，或新建一个 .conf 配置文件')
+      ElMessage.warning(settingMessages.nginxConfPathRequired)
       return false
     }
     if (!isValidPort(props.form.frontendPort)) {
-      ElMessage.warning(`Nginx前端端口不合法（${PORT_MIN}-${PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.nginxFrontendPortInvalid(PORT_MIN, PORT_MAX))
       return false
     }
     if (!isValidPort(props.form.backendDeployPort)) {
-      ElMessage.warning(`后端部署端口不合法（${PORT_MIN}-${PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.backendDeployPortInvalid(PORT_MIN, PORT_MAX))
       return false
     }
     if (!ensurePortsDistinct()) {
@@ -2384,7 +2367,7 @@ const validateCurrentStep = async () => {
       if (!ok) return false
     }
     if (!props.form.nginxPreviewConfirmed || !hasText(props.form.nginxConfigText)) {
-      ElMessage.warning('请先确认Nginx详细配置')
+      ElMessage.warning(settingMessages.nginxConfirmDetailRequired)
       return false
     }
     return true
@@ -2398,23 +2381,23 @@ const validateCurrentStep = async () => {
       return true
     }
     if (!hasText(props.form.databaseName)) {
-      ElMessage.warning('请填写数据库名称')
+      ElMessage.warning(settingMessages.databaseNameRequired)
       return false
     }
     if (!hasText(props.form.databaseHost)) {
-      ElMessage.warning('请填写数据库IP')
+      ElMessage.warning(settingMessages.databaseHostRequired)
       return false
     }
     if (!isValidDbPort(props.form.databasePort)) {
-      ElMessage.warning(`数据库端口不合法（${DB_PORT_MIN}-${DB_PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.dbPortInvalid(DB_PORT_MIN, DB_PORT_MAX))
       return false
     }
     if (!hasText(props.form.databaseUser)) {
-      ElMessage.warning('请填写数据库账号')
+      ElMessage.warning(settingMessages.databaseUserRequired)
       return false
     }
     if (!databaseChecked.value) {
-      ElMessage.warning('请先点击 Check 测试数据库连接')
+      ElMessage.warning(settingMessages.databaseCheckClickRequired)
       return false
     }
     return true
@@ -2434,19 +2417,19 @@ const validateBeforeConfirm = async () => {
     restoreOriginalDeployCommand()
   }
   if (props.form?.condaModifyEnabled && !hasText(props.form.condaEnvName)) {
-    ElMessage.warning('请填写Conda环境')
+      ElMessage.warning(settingMessages.condaEnvRequired)
     return false
   }
   if (!hasText(props.form.entryFilePath)) {
-    ElMessage.warning('请先选择项目入口文件位置')
+      ElMessage.warning(settingMessages.entryFileRequired)
     return false
   }
   if (hasText(props.form.backendDevPort) && !isValidPort(props.form.backendDevPort)) {
-    ElMessage.warning(`后端开发端口不合法（${PORT_MIN}-${PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.backendDevPortInvalid(PORT_MIN, PORT_MAX))
     return false
   }
   if (hasText(props.form.backendDeployPort) && !isValidPort(props.form.backendDeployPort)) {
-    ElMessage.warning(`后端部署端口不合法（${PORT_MIN}-${PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.backendDeployPortInvalid(PORT_MIN, PORT_MAX))
     return false
   }
   if (props.form?.nginxEnabled) {
@@ -2457,23 +2440,23 @@ const validateBeforeConfirm = async () => {
       }
     } else {
       if (!hasText(props.form.nginxServerIp)) {
-        ElMessage.warning('请选择Nginx服务器IP')
+      ElMessage.warning(settingMessages.nginxServerIpRequired)
         return false
       }
       if (!props.form.nginxChecked) {
-        ElMessage.warning('请先检测Nginx服务')
+      ElMessage.warning(settingMessages.nginxCheckRequired)
         return false
       }
       if (!hasText(props.form.nginxConfPath)) {
-        ElMessage.warning('请选择已有Nginx配置文件，或新建一个 .conf 配置文件')
+      ElMessage.warning(settingMessages.nginxConfPathRequired)
         return false
       }
       if (!isValidPort(props.form.frontendPort)) {
-        ElMessage.warning(`Nginx前端端口不合法（${PORT_MIN}-${PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.nginxFrontendPortInvalid(PORT_MIN, PORT_MAX))
         return false
       }
       if (!isValidPort(props.form.backendDeployPort)) {
-        ElMessage.warning(`后端部署端口不合法（${PORT_MIN}-${PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.backendDeployPortInvalid(PORT_MIN, PORT_MAX))
         return false
       }
       if (!props.form.nginxFrontendPortChecked) {
@@ -2485,7 +2468,7 @@ const validateBeforeConfirm = async () => {
         if (!ok) return false
       }
       if (!props.form.nginxPreviewConfirmed || !hasText(props.form.nginxConfigText)) {
-        ElMessage.warning('请先确认Nginx详细配置')
+      ElMessage.warning(settingMessages.nginxConfirmDetailRequired)
         return false
       }
     }
@@ -2501,19 +2484,19 @@ const validateBeforeConfirm = async () => {
     if (!isDatabaseConfigEditable.value && hasOriginalDatabaseConfig()) {
       restoreOriginalDatabaseConfig()
     } else if (!hasText(props.form.databaseName)) {
-      ElMessage.warning('请填写数据库名称')
+      ElMessage.warning(settingMessages.databaseNameRequired)
       return false
     }
     if (!hasText(props.form.databaseHost)) {
-      ElMessage.warning('请填写数据库IP')
+      ElMessage.warning(settingMessages.databaseHostRequired)
       return false
     }
     if (!isValidDbPort(props.form.databasePort)) {
-      ElMessage.warning(`数据库端口不合法（${DB_PORT_MIN}-${DB_PORT_MAX}）`)
+      ElMessage.warning(settingMessageFactory.dbPortInvalid(DB_PORT_MIN, DB_PORT_MAX))
       return false
     }
     if (!hasText(props.form.databaseUser)) {
-      ElMessage.warning('请填写数据库账号')
+      ElMessage.warning(settingMessages.databaseUserRequired)
       return false
     }
     if (isDatabaseConfigEditable.value && !databaseChecked.value) {
@@ -2574,12 +2557,12 @@ const onConfirm = async () => {
   if (willDeleteOriginalConfig()) {
     try {
       await ElMessageBox.confirm(
-        '原配置信息将会实际删除，请谨慎操作。',
-        '危险操作确认',
+        settingConfirmMessages.dangerousConfirmContent,
+        settingConfirmMessages.dangerousConfirmTitle,
         {
           type: 'warning',
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
+          confirmButtonText: settingConfirmMessages.okButtonText,
+          cancelButtonText: settingConfirmMessages.cancelButtonText,
           closeOnClickModal: false,
         },
       )

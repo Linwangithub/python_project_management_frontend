@@ -1,3 +1,4 @@
+/** 新建项目弹框字段配置。 */
 export const createProjectDialogFieldsConfig = [
   { key: 'serverIp', label: '服务器IP', component: 'select', placeholder: '请选择服务器IP', options: [], span: 24 },
   { key: 'name', label: '项目名称', component: 'input', placeholder: '请输入项目名称', span: 12 },
@@ -18,23 +19,27 @@ export const createProjectDialogFieldsConfig = [
   { key: 'nginxConfPath', label: 'Nginx配置文件路径', component: 'selectOrCreateNginxConf', placeholder: '请选择已有配置文件，或输入新配置文件路径', options: [], span: 24 },
 ]
 
+/** 新建用户弹框字段配置。 */
 export const createUserDialogFieldsConfig = [
   { key: 'username', label: '账号', component: 'input', placeholder: '如zhangsan', span: 24 },
   { key: 'password', label: '密码', component: 'input', placeholder: '如123456', span: 24 },
 ]
 
+/** 新建 Conda 环境弹框字段配置。 */
 export const createEnvDialogFieldsConfig = [
   { key: 'name', label: '环境名称', component: 'input', span: 12 },
   { key: 'pythonVersion', label: 'Python版本', component: 'select', options: ['3.11', '3.10'], span: 12 },
   { key: 'description', label: '描述', component: 'textarea', rows: 2, span: 24 },
 ]
 
+/** 新建服务器弹框字段配置。 */
 export const createServerDialogFieldsConfig = [
   { key: 'ip', label: '服务器IP', component: 'input', span: 12 },
   { key: 'rootPassword', label: 'root密码', component: 'input', span: 12 },
   { key: 'remark', label: '备注', component: 'textarea', rows: 2, span: 24 },
 ]
 
+/** 项目设置弹框旧版字段配置，保留给历史通用弹框渲染器使用。 */
 export const settingDialogFieldsConfig = [
   { key: 'projectName', label: '项目', component: 'input', disabled: true, gridClass: 'full' },
   { key: 'entryFilePath', label: '项目入口文件位置', component: 'entryPathCascader', placeholder: '请选择入口文件', gridClass: 'full' },
@@ -46,26 +51,31 @@ export const settingDialogFieldsConfig = [
   { key: 'remark', label: '备注', component: 'input', gridClass: 'full' },
 ]
 
+/** 复制项目弹框字段配置。 */
 export const copyDialogFieldsConfig = [
   { key: 'projectName', label: '项目', component: 'input', disabled: true },
   { key: 'targetServerIp', label: '目标服务器IP', component: 'input' },
   { key: 'targetDir', label: '目标目录', component: 'input' },
 ]
 
+/** 导出项目弹框字段配置。 */
 export const exportDialogFieldsConfig = [
   { key: 'projectName', label: '项目', component: 'input', disabled: true },
   { key: 'targetDir', label: '导出到本机目录', component: 'input' },
 ]
 
+/** 新建终端会话弹框字段配置。 */
 export const createSessionDialogFieldsConfig = [
   { key: 'serverIp', label: '服务器IP', component: 'select', placeholder: '请选择服务器IP' },
   { key: 'alias', label: '会话别名', component: 'input', placeholder: '如srv' },
 ]
 
+/** 增加服务器用户弹框字段配置。 */
 export const addServerUserDialogFieldsConfig = [
   { key: 'username', label: '用户名', component: 'input', placeholder: '如alice', span: 24 },
 ]
 
+/** 删除服务器用户弹框字段配置。 */
 export const deleteServerUserDialogFieldsConfig = [
   { key: 'username', label: '用户名', component: 'select', placeholder: '请选择要删除的用户', span: 24, options: [] },
 ]

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="项目操作日志"
+    :title="projectLogDialogText.title"
     width="900px"
     class="project-log-dialog"
     @update:model-value="emit('update:modelValue', $event)"
@@ -9,13 +9,13 @@
     <div v-loading="loading" class="log-body">
       <div class="log-hero">
         <div>
-          <div class="hero-label">项目名称</div>
-          <div class="hero-title">{{ logData?.project_name || '-' }}</div>
+          <div class="hero-label">{{ projectLogDialogText.projectName }}</div>
+          <div class="hero-title">{{ logData?.project_name || projectLogDialogText.emptyProjectName }}</div>
         </div>
-        <el-tag effect="dark">共 {{ logItems.length }} 条记录</el-tag>
+        <el-tag effect="dark">{{ projectLogDialogText.recordCount(logItems.length) }}</el-tag>
       </div>
 
-      <el-empty v-if="!logItems.length" description="暂无操作日志" />
+      <el-empty v-if="!logItems.length" :description="projectLogDialogText.emptyDescription" />
 
       <el-timeline v-else class="log-timeline">
         <el-timeline-item
@@ -30,25 +30,25 @@
                 <div class="log-line-title">
                   <span class="line-time">{{ formatTime(item.created_at) }}</span>
                   <span class="line-action">{{ item.action_label || item.action }}</span>
-                  <span class="line-operator">操作人：{{ item.operator_name || '-' }}</span>
+                  <span class="line-operator">{{ projectLogDialogText.operatorPrefix }}{{ item.operator_name || projectLogDialogText.emptyProjectName }}</span>
                 </div>
               </template>
 
               <div class="log-card">
                 <div v-if="changedFields(item).length" class="change-box">
-                  <div class="block-title">配置变更</div>
+                  <div class="block-title">{{ projectLogDialogText.configChangedTitle }}</div>
                   <div v-for="change in changedFields(item)" :key="change.key" class="change-row">
                     <div class="change-label">{{ change.label || change.key }}</div>
                     <div v-if="change.key === 'nginx_config_text'" class="change-values nginx-config-change">
                       <el-collapse class="inline-config-collapse">
-                        <el-collapse-item title="点击查看Nginx详细配置" :name="`nginx-${item.id}-${change.key}`">
+                        <el-collapse-item :title="projectLogDialogText.nginxDetailCollapseTitle" :name="`nginx-${item.id}-${change.key}`">
                           <div class="nginx-config-compare">
                             <div>
-                              <div class="config-subtitle">修改前</div>
+                              <div class="config-subtitle">{{ projectLogDialogText.beforeTitle }}</div>
                               <pre class="config-light-pre">{{ displayValue(change.before) }}</pre>
                             </div>
                             <div>
-                              <div class="config-subtitle">修改后</div>
+                              <div class="config-subtitle">{{ projectLogDialogText.afterTitle }}</div>
                               <pre class="config-light-pre">{{ displayValue(change.after) }}</pre>
                             </div>
                           </div>
@@ -64,12 +64,12 @@
                 </div>
 
                 <div v-if="actionRows(item).length" class="actions-box">
-                  <div class="actions-title">Actions 动作</div>
+                  <div class="actions-title">{{ projectLogDialogText.actionsTitle }}</div>
                   <pre class="actions-pre">{{ actionRows(item).join('\n') }}</pre>
                 </div>
 
                 <el-collapse v-if="snapshotRows(item).length" class="snapshot-collapse">
-                  <el-collapse-item title="当前版本完整配置" name="detail">
+                  <el-collapse-item :title="projectLogDialogText.snapshotTitle" name="detail">
                     <div class="snapshot-grid">
                       <div v-for="row in snapshotRows(item)" :key="row.key" class="snapshot-item" :class="{ wide: row.wide }">
                         <div class="snapshot-label">{{ row.label }}</div>
@@ -90,6 +90,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { projectLogDialogText, projectLogFieldLabels, projectLogHiddenKeys } from '@/config/project/project.log.config'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -99,43 +100,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const fieldLabels = {
-  id: '项目ID',
-  name: '项目名称',
-  description: '项目描述',
-  owner: '所属人员',
-  server_ip: '项目服务器IP',
-  backend_path: '后端代码位置',
-  frontend_path: '前端代码位置',
-  entry_file_path: '项目入口文件位置',
-  conda_env_name: 'Conda环境',
-  conda_env_path: 'Conda环境位置',
-  python_version: 'Python版本',
-  database_name: '数据库名称',
-  database_host: '数据库IP',
-  database_port: '数据库端口',
-  database_user: '数据库账号',
-  database_password: '数据库密码',
-  nginx_server_ip: 'Nginx服务器IP',
-  nginx_conf_path: 'Nginx配置文件路径',
-  frontend_port: 'Nginx前端端口',
-  backend_dev_port: '后端开发端口',
-  backend_deploy_port: '后端部署端口',
-  nginx_config_text: 'Nginx详细配置',
-  dev_start_command: '开发启动命令',
-  deploy_start_command: '部署启动命令',
-  status: '项目状态',
-  auto_start: '是否开机自启',
-  remark: '备注',
-  created_at: '创建时间',
-  updated_at: '更新时间',
-  target_dir: '目标目录',
-  target_server_ip: '目标服务器IP',
-  message: '执行结果',
-  execution_logs: '执行日志',
-}
-
-const hiddenKeys = new Set(['owner_id', 'server_id', 'updated_fields', 'actions', 'execution_logs'])
+const hiddenKeys = new Set(projectLogHiddenKeys)
 
 const logItems = computed(() => props.logData?.data || [])
 
@@ -148,7 +113,7 @@ const formatTime = (value) => {
 }
 
 const displayValue = (value) => {
-  if (value === null || value === undefined || value === '') return '空'
+  if (value === null || value === undefined || value === '') return projectLogDialogText.emptyValue
   if (Array.isArray(value)) return value.join('\n')
   if (typeof value === 'object') return JSON.stringify(value, null, 2)
   return String(value)
@@ -159,20 +124,20 @@ const changedFields = (item) => item?.detail?.changed_fields || []
 const actionRows = (item) => {
   const detail = item?.detail || {}
   const rows = detail.actions || detail.execution_logs || []
-  if (Array.isArray(rows)) return rows.map((row) => displayValue(row)).filter((row) => row !== '\u7a7a')
+  if (Array.isArray(rows)) return rows.map((row) => displayValue(row)).filter((row) => row !== projectLogDialogText.emptyValue)
   const text = displayValue(rows)
-  return text === '\u7a7a' ? [] : [text]
+  return text === projectLogDialogText.emptyValue ? [] : [text]
 }
 
 const rowsFromObject = (obj) => {
   if (!obj || typeof obj !== 'object') return []
   return Object.entries(obj)
-    .filter(([key, value]) => !hiddenKeys.has(key) && displayValue(value) !== '空')
+    .filter(([key, value]) => !hiddenKeys.has(key) && displayValue(value) !== projectLogDialogText.emptyValue)
     .map(([key, value]) => {
       const text = displayValue(value)
       return {
         key,
-        label: fieldLabels[key] || key,
+        label: projectLogFieldLabels[key] || key,
         value: text,
         pre: text.includes('\n') || key.includes('config') || key.includes('logs') || text.length > 120,
         wide: text.includes('\n') || text.length > 80,

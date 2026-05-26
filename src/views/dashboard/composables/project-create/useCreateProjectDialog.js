@@ -19,6 +19,25 @@ import {
   sanitizeTerminalLines,
   sleep,
 } from '../dialogUtils'
+import {
+  FRONTEND_DIST_BASE_PATH,
+  ROOT_PROJECT_BASE_PATH,
+  USER_PROJECT_BASE_PATH_TEMPLATE,
+  formatUserPath,
+} from '@/config/project/project.paths.config'
+import { buildProjectNginxServerTemplate } from '@/config/project/nginx-template.config'
+import {
+  CREATE_PROJECT_REQUIRED_FIELDS,
+  createProjectDialogText,
+  createProjectHintText,
+  createProjectMessageFactory,
+  createProjectMessages,
+  createProjectNginxOptionText,
+  createProjectPlaceholders,
+  createProjectTerminalFactory,
+  projectDialogCommonText,
+  createProjectLogFilters,
+} from '@/config/project/project.dialog.messages.config'
 
 /**
  * Create project dialog workflow.
@@ -45,16 +64,16 @@ export const useCreateProjectDialog = (options) => {
     const isRoot = role === 'root'
     if (isRoot) {
       const rootBase = String(projectStore.projectRootBasePath?.value ?? projectStore.projectRootBasePath ?? '').trim()
-      return [rootBase || '/root/project']
+      return [rootBase || ROOT_PROJECT_BASE_PATH]
     }
 
     const userTemplate = String(projectStore.projectUserBasePathTemplate?.value ?? projectStore.projectUserBasePathTemplate ?? '').trim()
     if (userTemplate) {
-      return [userTemplate.replace('{username}', username)]
+      return [formatUserPath(userTemplate, username)]
     }
-    return [`/home/${username}/project`]
+    return [formatUserPath(USER_PROJECT_BASE_PATH_TEMPLATE, username)]
   })
-  const getRootBasePath = () => projectPathOptions.value[0] || '/root/project'
+  const getRootBasePath = () => projectPathOptions.value[0] || ROOT_PROJECT_BASE_PATH
   const getCreateBasePath = () => {
     const rawPath = String(projectCreateForm.path || '').trim().replace(/\/+$/, '')
     const projectName = String(projectCreateForm.name || '').trim().replace(/^\/+|\/+$/g, '')
@@ -76,10 +95,8 @@ export const useCreateProjectDialog = (options) => {
   const getCreateUsername = () => String(projectStore.currentUsername?.value ?? projectStore.currentUsername ?? 'root').trim() || 'root'
   const isCreateRootRole = () => String(projectStore.currentRole?.value ?? projectStore.currentRole ?? 'user').trim() === 'root'
   const getCreateFrontendRoot = () => {
-    const username = getCreateUsername()
     const projectName = String(projectCreateForm.name || '').trim()
-    const baseDir = '/data/frontend_dist'
-    return projectName ? `${baseDir}/${projectName}` : baseDir
+    return projectName ? `${FRONTEND_DIST_BASE_PATH}/${projectName}` : FRONTEND_DIST_BASE_PATH
   }
   const buildCreateNginxPreview = () => {
     const frontendPort = String(projectCreateForm.nginxFrontendPort || '').trim()
@@ -87,34 +104,13 @@ export const useCreateProjectDialog = (options) => {
     const nginxIp = String(projectCreateForm.nginxServerIp || '').trim()
     const serverIp = String(projectCreateForm.serverIp || '').trim()
     const frontendRoot = getCreateFrontendRoot()
-    return `server {
-    listen       ${frontendPort};
-    server_name  ${nginxIp};
-
-    location / {
-        root   ${frontendRoot};
-        index  index.html index.htm;
-    }
-
-    location /api {
-        proxy_pass   http://${serverIp}:${backendPort}/api;
-        add_header 'Access-Control-Allow-Origin' '*';
-        add_header 'Access-Control-Allow-Credentials' 'true';
-        proxy_buffering off;
-        #proxy_set_header Connection "";
-        client_body_buffer_size 4096m;
-        client_max_body_size 4096m;
-        proxy_max_temp_file_size 4096m;
-        proxy_send_timeout 1800;
-        proxy_read_timeout 1800;
-        proxy_next_upstream http_500 http_504 http_502 error timeout invalid_header;
-    }
-
-    error_page 404 /404.html;
-
-    location = /40x.html {
-    }
-}`
+    return buildProjectNginxServerTemplate({
+      frontendPort,
+      backendPort,
+      nginxIp,
+      serverIp,
+      frontendRoot,
+    })
   }
   const canShowCreateNginxPreview = computed(() => {
     if (!projectCreateForm.enableNginx || !projectCreateForm.nginxChecked) return false
@@ -184,13 +180,10 @@ export const useCreateProjectDialog = (options) => {
       const kind = typeof item === 'string' ? 'file' : (item.kind || 'file')
       const status = typeof item === 'string' ? 'available' : (item.status || 'available')
       const selectable = typeof item === 'string' ? true : item.selectable !== false
-      const tagMap = {
-        main: '主配置',
-        top: '顶层include',
-        http: 'http include',
-        include: 'include',
-      }
-      const tag = kind === 'include_pattern' ? `${tagMap[source] || 'include'}规则` : (tagMap[source] || '')
+      const tagMap = createProjectNginxOptionText
+      const tag = kind === 'include_pattern'
+        ? `${tagMap[source] || tagMap.include}${tagMap.includeRuleSuffix}`
+        : (tagMap[source] || '')
       return {
         label: path,
         value: path,
@@ -233,7 +226,9 @@ export const useCreateProjectDialog = (options) => {
         if (seen.has(directory)) return null
       seen.add(directory)
       const source = String(item.source || '').trim()
-      const tag = source === 'top' ? '顶层include' : (source === 'http' ? 'http include' : '')
+      const tag = source === 'top'
+        ? createProjectNginxOptionText.top
+        : (source === 'http' ? createProjectNginxOptionText.http : '')
       const folderName = String(item.folder_name || item.folderName || '').trim()
       const label = String(item.label || '').trim() || (folderName ? `${folderName} (${directory})` : directory)
       return {
@@ -322,37 +317,37 @@ export const useCreateProjectDialog = (options) => {
   const projectCreateDialogFieldsForView = computed(() => [
     {
       key: 'serverIp',
-      label: '服务器IP',
+      label: projectDialogCommonText.serverIp,
       component: 'select',
-      placeholder: '请选择服务器IP',
+      placeholder: createProjectPlaceholders.chooseServerIp,
       options: projectServerIpOptions.value,
       span: 24,
     },
     buildCreateField({
       key: 'name',
-      label: '项目名称',
+      label: projectDialogCommonText.projectName,
       component: 'input',
-      placeholder: '请输入项目名称',
+      placeholder: createProjectPlaceholders.projectName,
       span: 12,
     }),
     buildCreateField({
       key: 'pythonVersion',
-      label: 'Python版本',
+      label: projectDialogCommonText.pythonVersion,
       component: 'input',
-      placeholder: '例如3.10',
+      placeholder: createProjectPlaceholders.pythonVersion,
       span: 12,
     }),
     buildCreateField({
       key: 'description',
-      label: '项目描述',
+      label: projectDialogCommonText.projectDescription,
       component: 'textarea',
-      placeholder: '请输入项目描述',
+      placeholder: createProjectPlaceholders.projectDescription,
       rows: 2,
       span: 24,
     }),
     buildCreateReadonlyField({
       key: 'path',
-      label: '项目位置',
+      label: createProjectDialogText.projectLocation,
       component: 'input',
       placeholder: projectPathOptions.value[0] || '',
       disabled: true,
@@ -360,25 +355,25 @@ export const useCreateProjectDialog = (options) => {
     }),
     buildCreateReadonlyField({
       key: 'condaName',
-      label: 'Conda环境',
+      label: projectDialogCommonText.condaEnv,
       component: 'input',
       disabled: true,
-      placeholder: '默认与项目名称一致',
+      placeholder: createProjectPlaceholders.sameAsProjectName,
       span: 12,
     }),
     buildCreateField({
       key: 'enableNginx',
-      label: 'Nginx配置',
+      label: projectDialogCommonText.nginxConfig,
       component: 'switch',
-      activeText: '启用',
-      inactiveText: '不启用',
+      activeText: projectDialogCommonText.enable,
+      inactiveText: projectDialogCommonText.disable,
       span: 24,
     }),
     buildCreateField({
       key: 'nginxServerIp',
-      label: 'Nginx服务器IP',
+      label: projectDialogCommonText.nginxServerIp,
       component: 'select',
-      placeholder: '请选择Nginx服务器IP',
+      placeholder: createProjectPlaceholders.chooseNginxServerIp,
       options: projectServerIpOptions.value,
       clearable: true,
       span: 12,
@@ -386,9 +381,9 @@ export const useCreateProjectDialog = (options) => {
     }),
     buildCreateField({
       key: 'nginxCheck',
-      label: '检测Nginx服务',
+      label: projectDialogCommonText.nginxServiceCheck,
       component: 'button',
-      buttonText: projectCreateForm.nginxChecked ? '已通过' : '检测Nginx',
+      buttonText: projectCreateForm.nginxChecked ? projectDialogCommonText.checkPassed : projectDialogCommonText.nginxCheckButton,
       buttonType: projectCreateForm.nginxChecked ? 'success' : 'primary',
       loading: !!projectCreateForm.nginxChecking,
       disabled: projectCreateBaseFieldsDisabled.value || !String(projectCreateForm.nginxServerIp || '').trim(),
@@ -397,7 +392,7 @@ export const useCreateProjectDialog = (options) => {
     }),
     buildCreateField({
       key: 'nginxConfChooser',
-      label: 'Nginx配置文件路径',
+      label: projectDialogCommonText.nginxConfPath,
       component: 'nginxConfChooser',
       disabled: !projectCreateForm.nginxChecked,
       loading: !!projectCreateForm.nginxChecking,
@@ -410,97 +405,97 @@ export const useCreateProjectDialog = (options) => {
     }),
     buildCreateField({
       key: 'nginxFrontendPort',
-      label: 'Nginx前端端口',
+      label: projectDialogCommonText.nginxFrontendPort,
       component: 'input',
-      placeholder: '例如 8080',
+      placeholder: createProjectPlaceholders.nginxFrontendPort,
       disabled: createNginxPortFieldsDisabled.value,
       span: 8,
       visible: projectCreateForm.enableNginx,
     }),
     buildCreateField({
       key: 'nginxBackendPort',
-      label: '后端部署端口',
+      label: projectDialogCommonText.backendDeployPort,
       component: 'input',
-      placeholder: '例如 8000',
+      placeholder: createProjectPlaceholders.backendDeployPort,
       disabled: createNginxPortFieldsDisabled.value,
       span: 8,
       visible: projectCreateForm.enableNginx,
     }),
     buildCreateField({
       key: 'nginxPreview',
-      label: '预览详细配置',
+      label: projectDialogCommonText.previewDetail,
       component: 'button',
-      buttonText: projectCreateForm.nginxPreviewConfirmed ? '已确认详细配置' : '预览详细配置',
+      buttonText: projectCreateForm.nginxPreviewConfirmed ? createProjectDialogText.nginxPreviewConfirmed : projectDialogCommonText.previewDetail,
       buttonType: projectCreateForm.nginxPreviewConfirmed ? 'success' : 'info',
       span: 8,
       visible: projectCreateForm.enableNginx && canShowCreateNginxPreview.value,
     }),
     buildCreateField({
       key: 'nginxHint',
-      label: '提示',
+      label: projectDialogCommonText.hint,
       component: 'hint',
       text: projectCreateForm.nginxChecked
-        ? '已检测到Nginx服务，请选择已有 .conf 文件，或在允许目录中新建 .conf 配置文件'
-        : '启用Nginx配置后，请先选择Nginx服务器IP并完成检测',
+        ? createProjectHintText.nginxChecked
+        : createProjectHintText.nginxUnchecked,
       hintType: projectCreateForm.nginxChecked ? 'success' : 'warning',
       span: 24,
       visible: projectCreateForm.enableNginx,
     }),
     buildCreateField({
       key: 'enableDatabase',
-      label: '数据库配置',
+      label: projectDialogCommonText.databaseConfig,
       component: 'switch',
-      activeText: '启用',
-      inactiveText: '不启用',
+      activeText: projectDialogCommonText.enable,
+      inactiveText: projectDialogCommonText.disable,
       span: 24,
     }),
     buildCreateField({
       key: 'databaseName',
-      label: '数据库名称(与项目同名)',
+      label: createProjectDialogText.databaseNameSameAsProject,
       component: 'input',
       disabled: true,
-      placeholder: '默认与项目名称一致',
+      placeholder: createProjectPlaceholders.sameAsProjectName,
       span: 12,
       visible: projectCreateForm.enableDatabase,
     }),
     buildCreateField({
       key: 'databaseHost',
-      label: '数据库IP',
+      label: projectDialogCommonText.databaseIp,
       component: 'selectCreate',
-      placeholder: '可选择或手动输入数据库IP',
+      placeholder: createProjectPlaceholders.databaseIp,
       options: projectServerIpOptions.value,
       span: 12,
       visible: projectCreateForm.enableDatabase,
     }),
     buildCreateField({
       key: 'databasePort',
-      label: '数据库端口',
+      label: projectDialogCommonText.databasePort,
       component: 'input',
-      placeholder: '例如 3306',
+      placeholder: createProjectPlaceholders.databasePort,
       span: 12,
       visible: projectCreateForm.enableDatabase,
     }),
     buildCreateField({
       key: 'databaseUser',
-      label: '数据库账号',
+      label: projectDialogCommonText.databaseUser,
       component: 'input',
-      placeholder: '例如 root',
+      placeholder: createProjectPlaceholders.databaseUser,
       span: 12,
       visible: projectCreateForm.enableDatabase,
     }),
     buildCreateField({
       key: 'databasePassword',
-      label: '数据库密码',
+      label: projectDialogCommonText.databasePassword,
       component: 'password',
-      placeholder: '请输入数据库密码',
+      placeholder: createProjectPlaceholders.databasePassword,
       span: 12,
       visible: projectCreateForm.enableDatabase,
     }),
     buildCreateField({
       key: 'databaseCheck',
-      label: '连接测试',
+      label: projectDialogCommonText.databaseConnectionTest,
       component: 'button',
-      buttonText: projectCreateForm.dbChecked ? '已通过' : 'Check',
+      buttonText: projectCreateForm.dbChecked ? projectDialogCommonText.checkPassed : projectDialogCommonText.check,
       buttonType: projectCreateForm.dbChecked ? 'success' : 'primary',
       span: 12,
       visible: projectCreateForm.enableDatabase,
@@ -685,25 +680,18 @@ export const useCreateProjectDialog = (options) => {
       })
       const exists = !!resp.data?.data?.exists
       if (exists) {
-        ElMessage.error('项目名称已存在，请更换名称')
+        ElMessage.error(createProjectMessages.projectNameExists)
       }
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '项目名称检查失败'))
+      ElMessage.error(getErrorMessage(error, createProjectMessages.projectNameCheckFailed))
     }
   }
 
   const ensureRequiredProjectFields = () => {
-    const required = [
-      ['serverIp', '服务器IP'],
-      ['name', '项目名称'],
-      ['pythonVersion', 'Python版本'],
-      ['description', '项目描述'],
-      ['path', '项目位置'],
-      ['condaName', 'Conda环境'],
-    ]
-    for (const [key, label] of required) {
-      if (!String(projectCreateForm[key] || '').trim()) {
-        ElMessage.warning(`${label}不能为空`)
+    for (const field of CREATE_PROJECT_REQUIRED_FIELDS) {
+      const label = field.labelKey ? projectDialogCommonText[field.labelKey] : field.labelText
+      if (!String(projectCreateForm[field.key] || '').trim()) {
+        ElMessage.warning(createProjectMessageFactory.required(label))
         return false
       }
     }
@@ -713,37 +701,37 @@ export const useCreateProjectDialog = (options) => {
   const ensureNginxReadyForCreate = () => {
     if (!projectCreateForm.enableNginx) return true
     if (!String(projectCreateForm.nginxServerIp || '').trim()) {
-      ElMessage.warning('Nginx服务器IP不能为空')
+      ElMessage.warning(createProjectMessages.nginxServerIpRequired)
       return false
     }
     if (!projectCreateForm.nginxChecked) {
-      ElMessage.warning('请先检测Nginx服务')
+      ElMessage.warning(createProjectMessages.nginxCheckRequired)
       return false
     }
     if (!String(projectCreateForm.nginxConfPath || '').trim()) {
-      ElMessage.warning('请选择已有Nginx配置文件，或新建一个 .conf 配置文件')
+      ElMessage.warning(createProjectMessages.nginxConfRequired)
       return false
     }
     if (!isCreatePortValid(projectCreateForm.nginxFrontendPort)) {
-      ElMessage.warning(`Nginx前端端口需在 ${PORT_MIN}-${PORT_MAX} 范围内`)
+      ElMessage.warning(createProjectMessageFactory.portRange(projectDialogCommonText.nginxFrontendPort, PORT_MIN, PORT_MAX))
       return false
     }
     if (!isCreatePortValid(projectCreateForm.nginxBackendPort)) {
-      ElMessage.warning(`后端部署端口需在 ${PORT_MIN}-${PORT_MAX} 范围内`)
+      ElMessage.warning(createProjectMessageFactory.portRange(projectDialogCommonText.backendDeployPort, PORT_MIN, PORT_MAX))
       return false
     }
     const createServerIp = String(projectCreateForm.serverIp || '').trim()
     const createNginxIp = String(projectCreateForm.nginxServerIp || '').trim()
     if (createServerIp && createNginxIp && createServerIp === createNginxIp && String(projectCreateForm.nginxFrontendPort).trim() === String(projectCreateForm.nginxBackendPort).trim()) {
-      ElMessage.warning('服务器IP和Nginx服务器IP相同时，Nginx前端端口和后端部署端口不能相同')
+      ElMessage.warning(createProjectMessages.nginxSameServerPortConflict)
       return false
     }
     if (!projectCreateForm.nginxFrontendPortChecked || !projectCreateForm.nginxBackendPortChecked) {
-      ElMessage.warning('请先完成Nginx前端端口和后端部署端口校验')
+      ElMessage.warning(createProjectMessages.nginxPortCheckRequired)
       return false
     }
     if (!projectCreateForm.nginxPreviewConfirmed || !String(projectCreateForm.nginxPreviewText || '').trim()) {
-      ElMessage.warning('请先确认Nginx详细配置')
+      ElMessage.warning(createProjectMessages.nginxPreviewConfirmRequired)
       return false
     }
     const existingPath = String(projectCreateForm.nginxExistingConfPath || '').trim()
@@ -751,28 +739,28 @@ export const useCreateProjectDialog = (options) => {
     const newFile = String(projectCreateForm.nginxNewConfFileName || '').trim()
     const confPath = String(projectCreateForm.nginxConfPath || '').trim()
     if (existingPath && (newDir || newFile)) {
-      ElMessage.warning('已有配置文件和新建配置文件只能二选一')
+      ElMessage.warning(createProjectMessages.nginxExistingAndNewConflict)
       return false
     }
     if (!confPath.startsWith('/')) {
-      ElMessage.warning('Nginx配置文件路径必须是绝对路径')
+      ElMessage.warning(createProjectMessages.nginxConfPathMustAbsolute)
       return false
     }
     if (newDir || newFile) {
       if (!String(projectCreateForm.nginxNewConfBaseDir || '').trim()) {
-        ElMessage.warning('请选择Nginx固定目录前缀')
+        ElMessage.warning(createProjectMessages.nginxBaseDirRequired)
         return false
       }
       if (!newDir) {
-        ElMessage.warning('请选择Nginx配置目录')
+        ElMessage.warning(createProjectMessages.nginxDirRequired)
         return false
       }
       if (!newFile) {
-        ElMessage.warning('请输入Nginx配置文件名')
+        ElMessage.warning(createProjectMessages.nginxFileNameRequired)
         return false
       }
       if (newFile.includes('/') || newFile.includes('\\') || !newFile.toLowerCase().endsWith('.conf')) {
-        ElMessage.warning('Nginx配置文件名必须以 .conf 结尾，且不能包含路径分隔符')
+        ElMessage.warning(createProjectMessages.nginxFileNameInvalid)
         return false
       }
     }
@@ -788,20 +776,20 @@ export const useCreateProjectDialog = (options) => {
     const password = String(projectCreateForm.databasePassword || '')
 
     if (!host) {
-      ElMessage.warning('数据库IP不能为空')
+      ElMessage.warning(createProjectMessages.databaseHostRequired)
       return false
     }
     if (!port || Number.isNaN(Number(port))) {
-      ElMessage.warning('数据库端口不合法')
+      ElMessage.warning(createProjectMessages.databasePortInvalid)
       return false
     }
     const dbPortNum = Number(port)
     if (dbPortNum < DB_PORT_MIN || dbPortNum > DB_PORT_MAX) {
-      ElMessage.warning(`数据库端口需在 ${DB_PORT_MIN}-${DB_PORT_MAX} 范围内`)
+      ElMessage.warning(createProjectMessageFactory.portRange(projectDialogCommonText.databasePort, DB_PORT_MIN, DB_PORT_MAX))
       return false
     }
     if (!username) {
-      ElMessage.warning('数据库账号不能为空')
+      ElMessage.warning(createProjectMessages.databaseUserRequired)
       return false
     }
 
@@ -816,15 +804,15 @@ export const useCreateProjectDialog = (options) => {
       const data = resp.data?.data || {}
       if (data.can_create === true) {
         projectCreateForm.dbChecked = true
-        ElMessage.success('连接成功，该数据库不存在，可以创建使用')
+        ElMessage.success(createProjectMessages.databaseConnectSuccessCanCreate)
         return true
       }
       projectCreateForm.dbChecked = false
-      ElMessage.warning('连接成功，但该数据库已经存在，不可创建，请更改项目名称')
+      ElMessage.warning(createProjectMessages.databaseExistsChangeProjectName)
       return false
     } catch (error) {
       projectCreateForm.dbChecked = false
-      ElMessage.error('连接失败')
+      ElMessage.error(createProjectMessages.databaseConnectFailed)
       return false
     }
   }
@@ -834,11 +822,11 @@ export const useCreateProjectDialog = (options) => {
     const serverIp = String(projectCreateForm.serverIp || '').trim()
     const nginxServerIp = String(projectCreateForm.nginxServerIp || '').trim()
     if (!serverIp) {
-      ElMessage.warning('请先选择服务器IP')
+      ElMessage.warning(createProjectMessages.serverIpChooseFirst)
       return false
     }
     if (!nginxServerIp) {
-      ElMessage.warning('请选择Nginx服务器IP')
+      ElMessage.warning(createProjectMessages.nginxServerIpChoose)
       return false
     }
     try {
@@ -853,7 +841,7 @@ export const useCreateProjectDialog = (options) => {
       const confFiles = Array.isArray(data.conf_files) ? data.conf_files : []
       const newConfDirs = Array.isArray(data.new_conf_dirs) ? data.new_conf_dirs : []
       if (!confPath && !confFiles.length && !newConfDirs.length) {
-        ElMessage.warning('未获取到Nginx配置文件')
+        ElMessage.warning(createProjectMessages.nginxConfMissing)
         projectCreateForm.enableNginx = false
         resetCreateNginxCheckState()
         return false
@@ -868,13 +856,13 @@ export const useCreateProjectDialog = (options) => {
       projectCreateForm.nginxNewConfFileName = ''
       projectCreateForm.nginxChecked = true
       if (showSuccess) {
-        ElMessage.success('Nginx服务可用')
+        ElMessage.success(createProjectMessages.nginxServiceAvailable)
       }
       return true
     } catch (error) {
       projectCreateForm.enableNginx = false
       resetCreateNginxCheckState()
-      ElMessage.error(getErrorMessage(error, 'Nginx服务不可用'))
+      ElMessage.error(getErrorMessage(error, createProjectMessages.nginxServiceUnavailable))
       return false
     } finally {
       projectCreateForm.nginxChecking = false
@@ -890,7 +878,7 @@ export const useCreateProjectDialog = (options) => {
     if (serverIp && nginxIp && serverIp === nginxIp && frontend && backend && frontend === backend) {
       projectCreateForm.nginxFrontendPortChecked = false
       projectCreateForm.nginxBackendPortChecked = false
-      ElMessage.warning('服务器IP和Nginx服务器IP相同时，Nginx前端端口和后端部署端口不能相同')
+      ElMessage.warning(createProjectMessages.nginxSameServerPortConflict)
       return false
     }
     return true
@@ -899,18 +887,18 @@ export const useCreateProjectDialog = (options) => {
   const checkCreateNginxPort = async (kind) => {
     if (!projectCreateForm.enableNginx) return true
     if (!String(projectCreateForm.nginxConfPath || '').trim()) {
-      ElMessage.warning('请先选择Nginx配置文件')
+      ElMessage.warning(createProjectMessages.nginxConfChooseFirst)
       return false
     }
     const isFrontend = kind === 'frontend'
     const key = isFrontend ? 'nginxFrontendPort' : 'nginxBackendPort'
     const checkedKey = isFrontend ? 'nginxFrontendPortChecked' : 'nginxBackendPortChecked'
-    const label = isFrontend ? 'Nginx前端端口' : '后端部署端口'
+    const label = isFrontend ? projectDialogCommonText.nginxFrontendPort : projectDialogCommonText.backendDeployPort
     const portText = String(projectCreateForm[key] || '').trim()
     projectCreateForm[checkedKey] = false
     projectCreateForm.nginxPreviewConfirmed = false
     if (!isCreatePortValid(portText)) {
-      if (portText) ElMessage.warning(`${label}需在 ${PORT_MIN}-${PORT_MAX} 范围内`)
+      if (portText) ElMessage.warning(createProjectMessageFactory.portRange(label, PORT_MIN, PORT_MAX))
       return false
     }
     if (!validateCreateNginxPortPair()) return false
@@ -922,10 +910,10 @@ export const useCreateProjectDialog = (options) => {
         nginx_server_ip: String(projectCreateForm.nginxServerIp || '').trim(),
       })
       projectCreateForm[checkedKey] = true
-      ElMessage.success(`${label}可用`)
+      ElMessage.success(createProjectMessageFactory.portAvailable(label))
       return true
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, `${label}校验失败`))
+      ElMessage.warning(getErrorMessage(error, createProjectMessageFactory.portCheckFailed(label)))
       return false
     }
   }
@@ -999,24 +987,24 @@ export const useCreateProjectDialog = (options) => {
       try {
         await projectStore.loadBundle()
       } catch (refreshError) {
-        console.warn('创建项目后刷新项目列表失败', refreshError)
+        console.warn(createProjectMessages.refreshProjectListFailed, refreshError)
       }
     }
 
     try {
       sessionInfo = await ensureCreateProjectSession(serverIp)
-      lockSession(sessionInfo.localSessionId, `创建项目 ${projectName} 中，请稍候`)
+      lockSession(sessionInfo.localSessionId, createProjectTerminalFactory.lock(projectName))
 
-      await appendStepLine(`1.连接目标服务器：${serverIp}   ---> 已完成`)
+      await appendStepLine(createProjectTerminalFactory.stepConnect(serverIp))
       await appendStepLine('')
-      await appendStepLine(`2.开始创建项目目录：${targetDir}`)
-      await appendStepLine(`  执行命令：${mkdirCmd} ---> 已完成`)
+      await appendStepLine(createProjectTerminalFactory.stepStartCreateDir(targetDir))
+      await appendStepLine(createProjectTerminalFactory.commandDone(mkdirCmd))
       await appendStepLine('')
-      await appendStepLine(`3.创建Conda环境：${condaName} (python=${pythonVersion}) ---> 进行中`)
-      await appendStepLine(`  执行命令：${condaCreateCmd} ---> 进行中`, 80)
+      await appendStepLine(createProjectTerminalFactory.createConda(condaName, pythonVersion))
+      await appendStepLine(createProjectTerminalFactory.commandRunning(condaCreateCmd), 80)
     } catch (error) {
       projectStore.updateProjectByName(projectName, { status: PROJECT_CREATE_FAILED_TEXT })
-      ElMessage.error(getErrorMessage(error, '创建会话失败'))
+      ElMessage.error(getErrorMessage(error, createProjectMessages.createSessionFailed))
       await refreshProjectListAfterCreate()
       return
     }
@@ -1025,7 +1013,7 @@ export const useCreateProjectDialog = (options) => {
       const okNginx = await checkNginxAvailability()
       if (!okNginx) {
         projectStore.updateProjectByName(projectName, { status: PROJECT_CREATE_FAILED_TEXT })
-        appendSessionLine(sessionInfo.localSessionId, '创建失败：nginx可用性检查未通过')
+        appendSessionLine(sessionInfo.localSessionId, createProjectTerminalFactory.createFailed(createProjectMessages.nginxAvailabilityCheckFailed))
         await refreshProjectListAfterCreate()
         unlockSession(sessionInfo.localSessionId)
         return
@@ -1036,7 +1024,7 @@ export const useCreateProjectDialog = (options) => {
       const ok = await checkDatabaseConnection()
       if (!ok) {
         projectStore.updateProjectByName(projectName, { status: PROJECT_CREATE_FAILED_TEXT })
-        appendSessionLine(sessionInfo.localSessionId, '创建失败：数据库连接检查未通过')
+        appendSessionLine(sessionInfo.localSessionId, createProjectTerminalFactory.createFailed(createProjectMessages.databaseConnectionCheckFailed))
         await refreshProjectListAfterCreate()
         unlockSession(sessionInfo.localSessionId)
         return
@@ -1051,16 +1039,16 @@ export const useCreateProjectDialog = (options) => {
       })
       if (checkResp.data?.data?.exists) {
         projectStore.updateProjectByName(projectName, { status: PROJECT_CREATE_FAILED_TEXT })
-        appendSessionLine(sessionInfo.localSessionId, `创建失败：目录 ${targetDir} 已存在`)
-        ElMessage.error('项目名称已存在，请更换名称')
+        appendSessionLine(sessionInfo.localSessionId, createProjectTerminalFactory.createFailedDirectoryExists(targetDir))
+        ElMessage.error(createProjectMessages.projectNameExists)
         await refreshProjectListAfterCreate()
         unlockSession(sessionInfo.localSessionId)
         return
       }
     } catch (error) {
       projectStore.updateProjectByName(projectName, { status: PROJECT_CREATE_FAILED_TEXT })
-      appendSessionLine(sessionInfo.localSessionId, `创建失败：项目重名检查失败 - ${getErrorMessage(error, 'unknown')}`)
-      ElMessage.error(getErrorMessage(error, '项目名称检查失败'))
+      appendSessionLine(sessionInfo.localSessionId, createProjectTerminalFactory.createFailedDuplicateCheck(getErrorMessage(error, createProjectMessages.unknownError)))
+      ElMessage.error(getErrorMessage(error, createProjectMessages.projectNameCheckFailed))
       await refreshProjectListAfterCreate()
       unlockSession(sessionInfo.localSessionId)
       return
@@ -1091,10 +1079,10 @@ export const useCreateProjectDialog = (options) => {
       const data = resp.data?.data || {}
       const logs = sanitizeTerminalLines(data.logs || [])
 
-      await appendStepLine(`  执行命令：${condaCreateCmd} ---> 已完成`)
+      await appendStepLine(createProjectTerminalFactory.commandDone(condaCreateCmd))
       await appendStepLine('')
-      await appendStepLine('4.检查Conda环境：')
-      await appendStepLine(`  执行命令：${condaCheckCmd}`)
+      await appendStepLine(createProjectTerminalFactory.checkConda(4))
+      await appendStepLine(`  ${createProjectTerminalFactory.commandDone(condaCheckCmd).replace(/ ---> .+$/, '')}`)
 
       const pyVersionLines = logs.filter((line) => /^Python\s+\d+/i.test(line))
       for (const line of pyVersionLines) {
@@ -1105,28 +1093,28 @@ export const useCreateProjectDialog = (options) => {
       if (enableDatabase && databaseName) {
         stepNo += 1
         await appendStepLine('')
-        await appendStepLine(`${stepNo}.创建数据库：${databaseName} ---> 进行中`)
-        const dbLogLines = logs.filter((line) => /MySQL|数据库|CREATE DATABASE|utf8mb4|SCHEMA|可用性|已存在/.test(line))
+        await appendStepLine(createProjectTerminalFactory.createDatabase(stepNo, databaseName))
+        const dbLogLines = logs.filter((line) => createProjectLogFilters.databaseInclude.test(line))
         const usefulDbLines = dbLogLines.filter((line) => !/conda create|Collecting|Downloading|Installing/i.test(line))
         if (usefulDbLines.length) {
           for (const line of usefulDbLines) {
             await appendStepLine(`  ${line.replace(/^\d+\.\s*/, '')}`)
           }
         } else {
-          await appendStepLine(`  创建数据库 ${databaseName} ---> 已完成`)
+          await appendStepLine(createProjectTerminalFactory.createDatabaseDone(databaseName))
         }
       }
 
       if (enableNginx) {
         stepNo += 1
         await appendStepLine('')
-        await appendStepLine(`${stepNo}.写入Nginx配置：${nginxConfPath} ---> 进行中`)
-        await appendStepLine(`  Nginx服务器IP：${nginxServerIp}`)
-        await appendStepLine(`  使用Nginx前端端口：${nginxFrontendPort}`)
-        await appendStepLine(`  使用后端部署端口：${nginxBackendPort}`)
+        await appendStepLine(createProjectTerminalFactory.writeNginx(stepNo, nginxConfPath))
+        await appendStepLine(createProjectTerminalFactory.nginxServerIp(nginxServerIp))
+        await appendStepLine(createProjectTerminalFactory.nginxFrontendPort(nginxFrontendPort))
+        await appendStepLine(createProjectTerminalFactory.backendDeployPort(nginxBackendPort))
         const nginxLogLines = logs
-          .filter((line) => /Nginx|nginx|配置|server块|重载|reload|listen|proxy_pass/i.test(line))
-          .filter((line) => !/unknown directive|创建失败/i.test(line))
+          .filter((line) => createProjectLogFilters.nginxInclude.test(line))
+          .filter((line) => !createProjectLogFilters.nginxExclude.test(line))
         const seenNginxLogs = new Set()
         for (const line of nginxLogLines) {
           const normalized = line.replace(/^\d+\.\s*/, '').trim()
@@ -1134,21 +1122,21 @@ export const useCreateProjectDialog = (options) => {
           seenNginxLogs.add(normalized)
           await appendStepLine(`  ${normalized}`)
         }
-        await appendStepLine('  写入Nginx配置 ---> 已完成')
+        await appendStepLine(createProjectTerminalFactory.writeNginxDone())
       }
 
       await appendStepLine('')
-      await appendStepLine(`${stepNo + 1}.创建项目成功`, 0)
+      await appendStepLine(createProjectTerminalFactory.createProjectSuccess(stepNo + 1), 0)
 
 
       projectStore.updateProjectByName(projectName, { status: PROJECT_CREATED_TEXT })
-      ElMessage.success('项目创建成功')
+      ElMessage.success(createProjectMessages.projectCreateSuccess)
       await projectStore.loadBundle()
       projectStore.updateProjectByName(projectName, { status: PROJECT_CREATED_TEXT })
     } catch (error) {
-      const msg = getErrorMessage(error, '项目创建失败')
+      const msg = getErrorMessage(error, createProjectMessages.projectCreateFailed)
       projectStore.updateProjectByName(projectName, { status: PROJECT_CREATE_FAILED_TEXT })
-      appendSessionLine(sessionInfo.localSessionId, `创建失败：${msg}`)
+      appendSessionLine(sessionInfo.localSessionId, createProjectTerminalFactory.createFailed(msg))
       ElMessage.error(msg)
       await refreshProjectListAfterCreate()
     } finally {

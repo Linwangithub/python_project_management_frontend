@@ -3,6 +3,38 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { TERMINAL_WS_PROTOCOL, buildTerminalDirectDownloadUrl, buildTerminalWsUrl, getTerminalWsToken, terminalApi } from '@/api/terminal'
 import { getErrorMessage } from '@/utils/request'
+import { ROOT_ROLE_KEY, USER_STORAGE_KEY } from '@/config/auth/auth.config'
+import { TERMINAL_DEFAULT_HOME_DIR } from '@/config/project/project.paths.config'
+import {
+  TERMINAL_BLANK_LINE,
+  TERMINAL_CANDIDATE_DISPLAY_SEPARATOR,
+  TERMINAL_CANDIDATE_SEPARATOR,
+  TERMINAL_CTRL_C_DISPLAY_TEXT,
+  TERMINAL_CTRL_C_INPUT,
+  TERMINAL_NEWLINE_INPUT,
+} from '@/config/terminal/terminal.control.config'
+import {
+  PROJECT_SERVICE_STATUS,
+  TERMINAL_CLEAR_COMMAND,
+  TERMINAL_COMMAND_HISTORY_LIMIT,
+  TERMINAL_CONNECT_TIMEOUT_MS,
+  TERMINAL_CREATE_PROJECT_SUFFIX,
+  TERMINAL_DEFAULT_ALIAS,
+  TERMINAL_DEFAULT_HOST_LABEL,
+  TERMINAL_DEFAULT_USER_ID,
+  TERMINAL_FILE_NODE_TYPES,
+  TERMINAL_NATIVE_DOWNLOAD_LINK_CONFIG,
+  TERMINAL_SERVER_IP_ALIAS_FALLBACK,
+  TERMINAL_SERVER_USERS_SEPARATOR_PATTERN,
+  TERMINAL_SESSION_DIALOG_WIDTH,
+  TERMINAL_SESSION_FIELD_KEYS,
+  TERMINAL_TAB_REPEAT_MS,
+  TERMINAL_TASK_SUFFIX,
+  TERMINAL_UPLOAD_INPUT_CONFIG,
+  TERMINAL_UPLOAD_TARGET_PATH,
+  TERMINAL_WS_MESSAGE_TYPES,
+} from '@/config/terminal/terminal.session.config'
+import { terminalMessageFactory, terminalMessages } from '@/config/terminal/terminal.messages.config'
 
 const parseJson = (text, fallback) => {
   if (!text) return fallback
@@ -13,11 +45,13 @@ const parseJson = (text, fallback) => {
   }
 }
 
+/** 获取当前终端状态隔离使用的用户标识。 */
 const getUserIdentity = (auth) => {
-  const user = auth?.user || parseJson(window.localStorage.getItem('pspm_user'), null)
-  return String(user?.id || user?.userid || user?.username || 'guest')
+  const user = auth?.user || parseJson(window.localStorage.getItem(USER_STORAGE_KEY), null)
+  return String(user?.id || user?.userid || user?.username || TERMINAL_DEFAULT_USER_ID)
 }
 
+/** 将终端原始输出按行拆分。 */
 const splitOutput = (text) => {
   const normalized = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   if (!normalized) return []
@@ -26,8 +60,21 @@ const splitOutput = (text) => {
   return lines
 }
 
-
-
+/** 将后端文件列表项转换为 Cascader（级联选择器）节点。 */
+const createDownloadNode = (item) => ({
+  label: item.name || item.path,
+  value: item.path,
+  leaf: item.type !== TERMINAL_FILE_NODE_TYPES.DIRECTORY,
+  path: item.path,
+  type: item.type === TERMINAL_FILE_NODE_TYPES.DIRECTORY ? TERMINAL_FILE_NODE_TYPES.DIRECTORY : TERMINAL_FILE_NODE_TYPES.FILE,
+})
+/**
+ * Dashboard 终端组合函数。
+ *
+ * 作用：
+ * - 管理终端 WebSocket 连接、会话创建、命令发送、Tab 补全、上传下载等交互。
+ * - 为项目启动/停止/设置流程复用同一个终端会话能力。
+ */
 export const useDashboardTerminal = (options) => {
   const { terminalStore, projectStore, onCtrlC, getForegroundProjectBySessionId } = options
   const auth = useAuthStore()
@@ -58,13 +105,13 @@ export const useDashboardTerminal = (options) => {
   const currentUserIdentity = computed(() => getUserIdentity(auth))
 
   const availableServers = computed(() => {
-    if (auth.role === 'root') return Array.isArray(projectStore?.servers) ? projectStore.servers : []
+    if (auth.role === ROOT_ROLE_KEY) return Array.isArray(projectStore?.servers) ? projectStore.servers : []
     const username = String(auth.user?.username || '')
     const serverList = Array.isArray(projectStore?.servers) ? projectStore.servers : []
     if (!username) return serverList
     return serverList.filter((server) => {
       const users = String(server.users || '')
-        .split(/[,\s]+/)
+        .split(TERMINAL_SERVER_USERS_SEPARATOR_PATTERN)
         .map((item) => item.trim())
         .filter(Boolean)
       return users.includes(username)
@@ -73,7 +120,7 @@ export const useDashboardTerminal = (options) => {
 
   const sessionOptions = computed(() =>
     availableServers.value.map((server) => ({
-      label: server.alias ? `${server.alias} (${server.ip})` : server.ip,
+      label: terminalMessageFactory.serverOptionLabel(server.alias, server.ip),
       value: server.ip,
       title: server.ip,
     })),
@@ -86,25 +133,25 @@ export const useDashboardTerminal = (options) => {
 
   const activeSession = computed(() => terminalStore.getSession(terminalStore.activeSessionId))
 
-  const activeSessionAlias = computed(() => activeSession.value?.alias || 'default')
+  const activeSessionAlias = computed(() => activeSession.value?.alias || TERMINAL_DEFAULT_ALIAS)
   const activeSessionIp = computed(() => activeSession.value?.serverIp || '')
   const activeSessionLocked = computed(() => !!activeSession.value?.locked)
   const activeSessionLockReason = computed(() => String(activeSession.value?.lockReason || ''))
 
-  const sessionDialogWidth = '560px'
+  const sessionDialogWidth = TERMINAL_SESSION_DIALOG_WIDTH
   const sessionDialogFieldsForView = computed(() => [
     {
-      key: 'serverIp',
-      label: '服务器IP',
+      key: TERMINAL_SESSION_FIELD_KEYS.SERVER_IP,
+      label: terminalMessages.sessionServerLabel,
       component: 'select',
       options: sessionOptions.value,
-      placeholder: '请选择可用服务器',
+      placeholder: terminalMessages.sessionServerPlaceholder,
     },
     {
-      key: 'alias',
-      label: '会话别名',
+      key: TERMINAL_SESSION_FIELD_KEYS.ALIAS,
+      label: terminalMessages.sessionAliasLabel,
       component: 'input',
-      placeholder: '如：srv',
+      placeholder: terminalMessages.sessionAliasPlaceholder,
     },
   ])
 
@@ -196,7 +243,7 @@ export const useDashboardTerminal = (options) => {
     }
   }
 
-  const lockSession = (sessionId, reason = '任务执行中') => {
+  const lockSession = (sessionId, reason = terminalMessages.taskRunningDefault) => {
     if (!sessionId) return
     terminalStore.setSessionLocked(String(sessionId), true, reason)
   }
@@ -225,7 +272,7 @@ export const useDashboardTerminal = (options) => {
     const completedCommand = String(data.completed_command || requestedCommand)
     const candidates = Array.isArray(data.candidates) ? data.candidates : []
     const now = Date.now()
-    const candidatesKey = candidates.join('\u0001')
+    const candidatesKey = candidates.join(TERMINAL_CANDIDATE_SEPARATOR)
 
     if (completedCommand !== requestedCommand) {
       commandInput.value = completedCommand
@@ -239,9 +286,9 @@ export const useDashboardTerminal = (options) => {
       const sameTap = lastTabState.value.sessionId === sessionId
         && lastTabState.value.rawCommand === requestedCommand
         && lastTabState.value.candidatesKey === candidatesKey
-        && now - lastTabState.value.at < 3000
+      && now - lastTabState.value.at < TERMINAL_TAB_REPEAT_MS
       if (sameTap) {
-        terminalStore.appendLine(sessionId, candidates.join('  '))
+        terminalStore.appendLine(sessionId, candidates.join(TERMINAL_CANDIDATE_DISPLAY_SEPARATOR))
         lastTabState.value = { sessionId, rawCommand: requestedCommand, candidatesKey, at: 0 }
       } else {
         lastTabState.value = { sessionId, rawCommand: requestedCommand, candidatesKey, at: now }
@@ -256,7 +303,7 @@ export const useDashboardTerminal = (options) => {
   const openTerminalSocket = ({ localSessionId, serverIp, alias, remoteSessionId = '', reconnect = false }) => new Promise((resolve, reject) => {
     const token = getTerminalWsToken()
     if (!token) {
-      reject(new Error('\u767b\u5f55\u4ee4\u724c\u4e3a\u7a7a\uff0c\u65e0\u6cd5\u521b\u5efa\u7ec8\u7aef\u8fde\u63a5'))
+      reject(new Error(terminalMessages.tokenMissing))
       return
     }
     const socket = new WebSocket(buildTerminalWsUrl(token), TERMINAL_WS_PROTOCOL)
@@ -265,11 +312,11 @@ export const useDashboardTerminal = (options) => {
       if (settled) return
       settled = true
       try { socket.close() } catch {}
-      reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u8d85\u65f6'))
-    }, 10000)
+      reject(new Error(terminalMessages.connectTimeout))
+    }, TERMINAL_CONNECT_TIMEOUT_MS)
 
     const sendOpen = () => {
-      socket.send(JSON.stringify({ type: 'open', server_ip: serverIp, alias, session_id: remoteSessionId || '' }))
+      socket.send(JSON.stringify({ type: TERMINAL_WS_MESSAGE_TYPES.OPEN, server_ip: serverIp, alias, session_id: remoteSessionId || '' }))
     }
 
     socket.onopen = sendOpen
@@ -283,7 +330,7 @@ export const useDashboardTerminal = (options) => {
       }
       const type = String(payload?.type || '')
       const data = payload?.data || {}
-      if (type === 'ready') {
+      if (type === TERMINAL_WS_MESSAGE_TYPES.READY) {
         window.clearTimeout(failTimer)
         settled = true
         terminalStore.setSessionRemoteId(localSessionId, data.session_id || '')
@@ -291,60 +338,60 @@ export const useDashboardTerminal = (options) => {
         if (data.conda_env_name) terminalStore.setSessionCondaEnv(localSessionId, data.conda_env_name)
         terminalStore.setSessionSocket(localSessionId, socket)
         if (reconnect && data.reconnected) {
-          terminalStore.appendLine(localSessionId, '')
-          terminalStore.appendLine(localSessionId, '[\u7cfb\u7edf] \u7ec8\u7aef\u8fde\u63a5\u5df2\u6062\u590d')
-          terminalStore.appendLine(localSessionId, '')
+          terminalStore.appendLine(localSessionId, TERMINAL_BLANK_LINE)
+          terminalStore.appendLine(localSessionId, terminalMessages.connectionRecovered)
+          terminalStore.appendLine(localSessionId, TERMINAL_BLANK_LINE)
         }
         resolve(socket)
         return
       }
-      if (type === 'output') {
+      if (type === TERMINAL_WS_MESSAGE_TYPES.OUTPUT) {
         appendSessionChunk(localSessionId, data.text || '')
         return
       }
-      if (type === 'foreground_started') {
+      if (type === TERMINAL_WS_MESSAGE_TYPES.FOREGROUND_STARTED) {
         if (data.cwd) terminalStore.setSessionCwd(localSessionId, data.cwd)
         if (data.conda_env_name) terminalStore.setSessionCondaEnv(localSessionId, data.conda_env_name)
-        terminalStore.appendLine(localSessionId, '')
-        terminalStore.appendLine(localSessionId, `\u524d\u53f0\u670d\u52a1\u5df2\u542f\u52a8\uff1aPID=${data.pid || ''}${data.port ? ` \u7aef\u53e3=${data.port}` : ''}`)
-        terminalStore.appendLine(localSessionId, '')
+        terminalStore.appendLine(localSessionId, TERMINAL_BLANK_LINE)
+        terminalStore.appendLine(localSessionId, terminalMessageFactory.foregroundStarted(data.pid, data.port))
+        terminalStore.appendLine(localSessionId, TERMINAL_BLANK_LINE)
         projectStore.updateProjectServiceStatus(data.project_id, {
-          service_status: '\u8fd0\u884c\u4e2d',
+          service_status: PROJECT_SERVICE_STATUS.RUNNING,
           running_port: data.port || '',
         })
         return
       }
-      if (type === 'foreground_pending') {
+      if (type === TERMINAL_WS_MESSAGE_TYPES.FOREGROUND_PENDING) {
         if (data.cwd) terminalStore.setSessionCwd(localSessionId, data.cwd)
         if (data.conda_env_name) terminalStore.setSessionCondaEnv(localSessionId, data.conda_env_name)
-        terminalStore.appendLine(localSessionId, '')
-        terminalStore.appendLine(localSessionId, data.message || '\u542f\u52a8\u547d\u4ee4\u5df2\u53d1\u9001')
-        terminalStore.appendLine(localSessionId, '')
+        terminalStore.appendLine(localSessionId, TERMINAL_BLANK_LINE)
+        terminalStore.appendLine(localSessionId, data.message || terminalMessages.commandSent)
+        terminalStore.appendLine(localSessionId, TERMINAL_BLANK_LINE)
         return
       }
-      if (type === 'complete_result') {
+      if (type === TERMINAL_WS_MESSAGE_TYPES.COMPLETE_RESULT) {
         applyTabCompletionResult(localSessionId, data)
         tabCompletionBusy.value = false
         return
       }
-      if (type === 'error') {
-        terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38')
+      if (type === TERMINAL_WS_MESSAGE_TYPES.ERROR) {
+        terminalStore.appendLine(localSessionId, data.message || terminalMessages.connectionError)
         tabCompletionBusy.value = false
         if (!settled) {
           window.clearTimeout(failTimer)
           settled = true
-          reject(new Error(data.message || '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38'))
+          reject(new Error(data.message || terminalMessages.connectionError))
         }
         return
       }
-      if (type === 'closed') {
-        terminalStore.appendLine(localSessionId, data.message || '\u7ec8\u7aef\u4f1a\u8bdd\u5df2\u5173\u95ed')
+      if (type === TERMINAL_WS_MESSAGE_TYPES.CLOSED) {
+        terminalStore.appendLine(localSessionId, data.message || terminalMessages.sessionClosed)
         if (typeof terminalStore.clearSessionForeground === 'function') {
           terminalStore.clearSessionForeground(localSessionId)
         }
         if (data.project_id) {
           projectStore.updateProjectServiceStatus(data.project_id, {
-            service_status: '\u5df2\u505c\u6b62',
+            service_status: PROJECT_SERVICE_STATUS.STOPPED,
             running_port: '',
           })
         }
@@ -354,9 +401,9 @@ export const useDashboardTerminal = (options) => {
       if (!settled) {
         window.clearTimeout(failTimer)
         settled = true
-        reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u5931\u8d25'))
+        reject(new Error(terminalMessages.connectFailed))
       } else {
-        terminalStore.appendLine(localSessionId, '\u7ec8\u7aef\u8fde\u63a5\u5f02\u5e38')
+        terminalStore.appendLine(localSessionId, terminalMessages.connectionError)
       }
     }
     socket.onclose = () => {
@@ -364,20 +411,20 @@ export const useDashboardTerminal = (options) => {
       terminalStore.removeSessionSocket(localSessionId)
       if (!settled) {
         settled = true
-        reject(new Error('\u7ec8\u7aef\u8fde\u63a5\u5df2\u5173\u95ed'))
+        reject(new Error(terminalMessages.connectionClosed))
       }
     }
   })
 
   const ensureSocketConnected = async (sessionId) => {
     const session = terminalStore.getSession(sessionId)
-    if (!session) throw new Error('\u7ec8\u7aef\u4f1a\u8bdd\u4e0d\u5b58\u5728')
+    if (!session) throw new Error(terminalMessages.sessionNotFound)
 
     const socket = terminalStore.getSessionSocket(session.id)
     if (socket && socket.readyState === WebSocket.OPEN) return socket
 
     if (!session.serverIp) {
-      throw new Error('\u7ec8\u7aef WebSocket \u672a\u8fde\u63a5')
+      throw new Error(terminalMessages.websocketDisconnected)
     }
 
     return openTerminalSocket({
@@ -411,10 +458,10 @@ export const useDashboardTerminal = (options) => {
       serverIp,
       alias: finalAlias,
       baseAlias,
-      hostLabel: hostLabel || 'wcp',
+      hostLabel: hostLabel || TERMINAL_DEFAULT_HOST_LABEL,
       remoteSessionId: '',
-      cwd: '/root',
-      welcomeMessage: `\u6b63\u5728\u8fde\u63a5\uff1a${serverIp}`,
+      cwd: TERMINAL_DEFAULT_HOME_DIR,
+      welcomeMessage: terminalMessageFactory.welcome(serverIp),
       prompt: '',
     })
     await openTerminalSocket({ localSessionId, serverIp, alias: finalAlias })
@@ -427,21 +474,21 @@ export const useDashboardTerminal = (options) => {
 
   const ensureCreateProjectSession = async (serverIp) => {
     if (!serverIp) {
-      throw new Error('服务器IP不能为空')
+      throw new Error(terminalMessages.serverIpRequired)
     }
-    const lastPart = String(serverIp).split('.').pop() || 'server'
-    const baseAlias = `${lastPart}_create_project`
+    const lastPart = String(serverIp).split('.').pop() || TERMINAL_SERVER_IP_ALIAS_FALLBACK
+    const baseAlias = `${lastPart}_${TERMINAL_CREATE_PROJECT_SUFFIX}`
     const server = availableServers.value.find((item) => item.ip === serverIp)
-    const hostLabel = server?.alias || 'wcp'
+    const hostLabel = server?.alias || TERMINAL_DEFAULT_HOST_LABEL
     const created = await createSessionByServer(serverIp, baseAlias, hostLabel)
     terminalStore.setActiveSession(created.localSessionId)
     scrollToBottom()
     return created
   }
 
-  const ensureProjectTaskSession = async (serverIp, suffix = 'task', options = {}) => {
+  const ensureProjectTaskSession = async (serverIp, suffix = TERMINAL_TASK_SUFFIX, options = {}) => {
     if (!serverIp) {
-      throw new Error('\u670d\u52a1\u5668IP\u4e0d\u80fd\u4e3a\u7a7a')
+      throw new Error(terminalMessages.serverIpRequired)
     }
 
     const shouldReuseSession = options.reuse !== false
@@ -463,16 +510,16 @@ export const useDashboardTerminal = (options) => {
           // 本地残留的坏会话不应该阻断操作，继续尝试其它会话或新建会话。
         }
       }
-      if (sameServerSessions.length && !reusableSessions.length) {
-        throw new Error('\u5f53\u524d\u670d\u52a1\u5668\u7ec8\u7aef\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5')
-      }
+      // 同一台服务器可以同时承载多个项目的前台服务。
+      // 如果已有同服务器会话都在执行任务或绑定了前台服务，则不再按 serverIp 锁死整台服务器，
+      // 而是继续向下创建一个新的独立终端会话，避免项目 A 前台启动后阻塞项目 B 启动。
     }
 
-    const lastPart = String(serverIp).split('.').pop() || 'server'
-    const safeSuffix = String(suffix || 'task').replace(/^_+/, '')
+    const lastPart = String(serverIp).split('.').pop() || TERMINAL_TASK_SUFFIX
+    const safeSuffix = String(suffix || TERMINAL_TASK_SUFFIX).replace(/^_+/, '')
     const baseAlias = `${lastPart}_${safeSuffix}`
     const server = availableServers.value.find((item) => item.ip === serverIp)
-    const hostLabel = server?.alias || 'wcp'
+    const hostLabel = server?.alias || TERMINAL_DEFAULT_HOST_LABEL
     const created = await createSessionByServer(serverIp, baseAlias, hostLabel)
     terminalStore.setActiveSession(created.localSessionId)
     scrollToBottom()
@@ -493,9 +540,9 @@ export const useDashboardTerminal = (options) => {
       terminalStore.setActiveSession(result.localSessionId)
       keepHistoryView.value = false
       scrollToBottom()
-      ElMessage.success(`已在服务器 ${baseSession.serverIp} 创建新会话：${result.finalAlias}`)
+      ElMessage.success(terminalMessageFactory.sessionCreatedOnServer(baseSession.serverIp, result.finalAlias))
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '创建会话失败'))
+      ElMessage.error(getErrorMessage(error, terminalMessages.createSessionFailed))
     }
   }
 
@@ -504,7 +551,7 @@ export const useDashboardTerminal = (options) => {
     if (!closing) return
 
     if (closing.locked) {
-      ElMessage.warning(closing.lockReason || '\u8be5\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u6682\u4e0d\u53ef\u5173\u95ed')
+      ElMessage.warning(closing.lockReason || terminalMessages.sessionLocked)
       return
     }
 
@@ -520,7 +567,7 @@ export const useDashboardTerminal = (options) => {
         onStopped: () => { stopped = true },
       })
       if (!stopped) {
-        ElMessage.warning('前台服务未停止，暂不关闭会话')
+        ElMessage.warning(terminalMessages.foregroundStopRequired)
         return
       }
     }
@@ -532,13 +579,13 @@ export const useDashboardTerminal = (options) => {
         remoteClosed = true
       }
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, '\u5173\u95ed\u8fdc\u7a0b\u4f1a\u8bdd\u5931\u8d25\uff0c\u5df2\u5173\u95ed\u672c\u5730\u4f1a\u8bdd'))
+      ElMessage.warning(getErrorMessage(error, terminalMessages.remoteCloseFailed))
     }
 
     const ok = terminalStore.closeSession(sessionId, { skipRemoteClose: remoteClosed })
     if (!ok) return
 
-    ElMessage.success(`\u5df2\u5173\u95ed\u4f1a\u8bdd\uff1a${closing.alias}`)
+    ElMessage.success(terminalMessageFactory.sessionClosedWithAlias(closing.alias))
     scrollToBottom()
   }
 
@@ -550,17 +597,17 @@ export const useDashboardTerminal = (options) => {
 
   const confirmCreateSession = async () => {
     if (!createSessionForm.serverIp) {
-      ElMessage.warning('请选择服务器IP')
+      ElMessage.warning(terminalMessages.chooseServerIp)
       return
     }
     if (!createSessionForm.alias.trim()) {
-      ElMessage.warning('会话别名不能为空')
+      ElMessage.warning(terminalMessages.aliasRequired)
       return
     }
 
     const server = availableServers.value.find((item) => item.ip === createSessionForm.serverIp)
     if (!server) {
-      ElMessage.warning('该服务器不在当前用户可用范围内')
+      ElMessage.warning(terminalMessages.serverUnavailableForUser)
       return
     }
 
@@ -568,24 +615,24 @@ export const useDashboardTerminal = (options) => {
       const result = await createSessionByServer(
         server.ip,
         createSessionForm.alias.trim(),
-        server.alias || 'wcp',
+        server.alias || TERMINAL_DEFAULT_HOST_LABEL,
       )
 
       sessionDialogVisible.value = false
       terminalStore.setActiveSession(result.localSessionId)
-      ElMessage.success('会话创建成功')
+      ElMessage.success(terminalMessages.createSessionSuccess)
       keepHistoryView.value = false
       scrollToBottom()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '会话创建失败'))
+      ElMessage.error(getErrorMessage(error, terminalMessages.createSessionFailed))
     }
   }
 
   const startNativeDownload = (url) => {
     const link = document.createElement('a')
     link.href = url
-    link.target = '_blank'
-    link.rel = 'noopener'
+    link.target = TERMINAL_NATIVE_DOWNLOAD_LINK_CONFIG.target
+    link.rel = TERMINAL_NATIVE_DOWNLOAD_LINK_CONFIG.rel
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -594,11 +641,11 @@ export const useDashboardTerminal = (options) => {
   const ensureActiveTransferSession = () => {
     const session = activeSession.value
     if (!session) {
-      ElMessage.warning('请创建一个终端会话')
+      ElMessage.warning(terminalMessages.createTerminalSessionFirst)
       return null
     }
     if (!session.remoteSessionId) {
-      ElMessage.warning('当前终端会话尚未连接完成')
+      ElMessage.warning(terminalMessages.sessionNotReady)
       return null
     }
     return session
@@ -606,9 +653,9 @@ export const useDashboardTerminal = (options) => {
 
   const pickUploadEntries = () => new Promise((resolve) => {
     const input = document.createElement('input')
-    input.type = 'file'
-    input.multiple = true
-    input.style.display = 'none'
+    input.type = TERMINAL_UPLOAD_INPUT_CONFIG.type
+    input.multiple = TERMINAL_UPLOAD_INPUT_CONFIG.multiple
+    input.style.display = TERMINAL_UPLOAD_INPUT_CONFIG.hiddenDisplay
     input.onchange = () => {
       const files = Array.from(input.files || [])
       document.body.removeChild(input)
@@ -630,15 +677,15 @@ export const useDashboardTerminal = (options) => {
         const relativePath = String(file.webkitRelativePath || '')
         await terminalApi.upload({
           session_id: session.remoteSessionId,
-          target_path: '',
+          target_path: TERMINAL_UPLOAD_TARGET_PATH,
           relative_path: relativePath,
           file,
         })
-        terminalStore.appendLine(session.id, `已上传：${relativePath || file.name}`)
+        terminalStore.appendLine(session.id, terminalMessageFactory.uploaded(relativePath || file.name))
       }
-      ElMessage.success('上传完成')
+      ElMessage.success(terminalMessages.uploadSuccess)
     } catch (error) {
-      const msg = getErrorMessage(error, '上传失败')
+      const msg = getErrorMessage(error, terminalMessages.uploadFailed)
       terminalStore.appendLine(session.id, msg)
       ElMessage.error(msg)
     }
@@ -659,13 +706,7 @@ export const useDashboardTerminal = (options) => {
       downloadRootPath.value = String(data.root || '')
       downloadParentPath.value = String(data.parent || '')
       downloadCanGoParent.value = !!data.can_go_parent
-      const children = options.map((item) => ({
-        label: item.name || item.path,
-        value: item.path,
-        leaf: item.type !== 'dir',
-        path: item.path,
-        type: item.type === 'dir' ? 'dir' : 'file',
-      }))
+      const children = options.map(createDownloadNode)
       if (targetNode) {
         targetNode.children = children
       } else {
@@ -675,7 +716,7 @@ export const useDashboardTerminal = (options) => {
       }
       return true
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '加载下载列表失败'))
+      ElMessage.error(getErrorMessage(error, terminalMessages.downloadListLoadFailed))
       return false
     } finally {
       downloadDialogLoading.value = false
@@ -695,7 +736,7 @@ export const useDashboardTerminal = (options) => {
     downloadDialogVisible.value = true
     const ok = await loadDownloadOptions('')
     if (ok && !downloadPathOptions.value.length) {
-      ElMessage.warning('当前目录暂无可下载文件或目录')
+      ElMessage.warning(terminalMessages.downloadableEmpty)
     }
   }
 
@@ -718,16 +759,10 @@ export const useDashboardTerminal = (options) => {
       })
       const data = resp.data?.data || {}
       const options = Array.isArray(data.items) ? data.items : []
-      const children = options.map((item) => ({
-        label: item.name || item.path,
-        value: item.path,
-        leaf: item.type !== 'dir',
-        path: item.path,
-        type: item.type === 'dir' ? 'dir' : 'file',
-      }))
+      const children = options.map(createDownloadNode)
       resolve(children)
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '加载下载列表失败'))
+      ElMessage.error(getErrorMessage(error, terminalMessages.downloadListLoadFailed))
       resolve([])
     }
   }
@@ -769,12 +804,12 @@ export const useDashboardTerminal = (options) => {
     try {
       const resp = await terminalApi.createDownloadTicket({ session_id: session.remoteSessionId, path })
       const ticket = resp.data?.data?.ticket || ''
-      if (!ticket) throw new Error('下载凭证生成失败')
+      if (!ticket) throw new Error(terminalMessages.downloadTicketFailed)
       startNativeDownload(buildTerminalDirectDownloadUrl(ticket))
-      terminalStore.appendLine(session.id, `开始下载：${path}`)
-      ElMessage.success('已开始下载，请在浏览器下载栏查看进度')
+      terminalStore.appendLine(session.id, terminalMessageFactory.downloadStarted(path))
+      ElMessage.success(terminalMessages.downloadStartedTip)
     } catch (error) {
-      const msg = getErrorMessage(error, '下载失败')
+      const msg = getErrorMessage(error, terminalMessages.downloadFailed)
       terminalStore.appendLine(session.id, msg)
       ElMessage.error(msg)
     }
@@ -788,7 +823,7 @@ export const useDashboardTerminal = (options) => {
     const list = commandHistory.value.slice()
     const last = list[list.length - 1]
     if (last !== value) list.push(value)
-    commandHistory.value = list.slice(-100)
+    commandHistory.value = list.slice(-TERMINAL_COMMAND_HISTORY_LIMIT)
     historyCursor.value = commandHistory.value.length
   }
 
@@ -798,16 +833,16 @@ export const useDashboardTerminal = (options) => {
 
   const executeSessionCommand = async (sessionId, rawCommand, options = {}) => {
     const session = terminalStore.getSession(sessionId)
-    if (!session) throw new Error('\u7ec8\u7aef\u4f1a\u8bdd\u4e0d\u5b58\u5728')
+    if (!session) throw new Error(terminalMessages.sessionNotFound)
     const command = String(rawCommand || '').trim()
-    if (!command) throw new Error('\u547d\u4ee4\u4e0d\u80fd\u4e3a\u7a7a')
-    await sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
+    if (!command) throw new Error(terminalMessages.commandRequired)
+    await sendSocketMessage(session.id, { type: TERMINAL_WS_MESSAGE_TYPES.INPUT, text: `${command}${TERMINAL_NEWLINE_INPUT}` })
     return { stdout: '', stderr: '', exit_code: 0 }
   }
 
   const runProjectForegroundInSession = async (sessionId, prepare = {}) => {
     const command = String(prepare.command || '').trim()
-    if (!command) throw new Error('\u6682\u65e0\u914d\u7f6e\u542f\u52a8\u547d\u4ee4')
+    if (!command) throw new Error(terminalMessages.startCommandMissing)
     if (typeof terminalStore.setSessionForeground === 'function') {
       terminalStore.setSessionForeground(sessionId, {
         running: true,
@@ -817,7 +852,7 @@ export const useDashboardTerminal = (options) => {
     }
     try {
       await sendSocketMessage(sessionId, {
-        type: 'run_foreground',
+        type: TERMINAL_WS_MESSAGE_TYPES.RUN_FOREGROUND,
         project_id: prepare.project_id,
         work_dir: prepare.work_dir || '',
         conda_env_name: prepare.conda_env_name || '',
@@ -835,12 +870,12 @@ export const useDashboardTerminal = (options) => {
   const executeCommand = async (rawCommand = commandInput.value) => {
     const session = activeSession.value
     if (!session) {
-      ElMessage.warning('\u8bf7\u5148\u521b\u5efa\u4f1a\u8bdd')
+      ElMessage.warning(terminalMessages.createSessionFirst)
       return
     }
 
     if (session.locked) {
-      ElMessage.warning(session.lockReason || '\u5f53\u524d\u4f1a\u8bdd\u4efb\u52a1\u6267\u884c\u4e2d\uff0c\u6682\u4e0d\u53ef\u8f93\u5165\u547d\u4ee4')
+      ElMessage.warning(session.lockReason || terminalMessages.commandBlockedByTask)
       return
     }
 
@@ -848,14 +883,14 @@ export const useDashboardTerminal = (options) => {
     const command = raw.trim()
     if (!command) {
       try {
-        await sendSocketMessage(session.id, { type: 'input', text: '\n' })
+        await sendSocketMessage(session.id, { type: TERMINAL_WS_MESSAGE_TYPES.INPUT, text: TERMINAL_NEWLINE_INPUT })
         commandInput.value = ''
         resetHistoryCursor()
         if (!keepHistoryView.value) {
           scrollToBottom()
         }
       } catch (error) {
-        const msg = getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25')
+        const msg = getErrorMessage(error, terminalMessages.commandSendFailed)
         terminalStore.appendLine(session.id, msg)
         ElMessage.error(msg)
         commandInput.value = ''
@@ -869,7 +904,7 @@ export const useDashboardTerminal = (options) => {
 
     pushCommandHistory(command)
 
-    if (command.toLowerCase() === 'clear') {
+    if (command.toLowerCase() === TERMINAL_CLEAR_COMMAND) {
       terminalStore.clearSession(session.id, '')
       commandInput.value = ''
       resetHistoryCursor()
@@ -879,14 +914,14 @@ export const useDashboardTerminal = (options) => {
     }
 
     try {
-      await sendSocketMessage(session.id, { type: 'input', text: `${command}\n` })
+      await sendSocketMessage(session.id, { type: TERMINAL_WS_MESSAGE_TYPES.INPUT, text: `${command}${TERMINAL_NEWLINE_INPUT}` })
       commandInput.value = ''
       resetHistoryCursor()
       if (!keepHistoryView.value) {
         scrollToBottom()
       }
     } catch (error) {
-      const msg = getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25')
+      const msg = getErrorMessage(error, terminalMessages.commandSendFailed)
       terminalStore.appendLine(session.id, msg)
       ElMessage.error(msg)
       commandInput.value = ''
@@ -910,8 +945,8 @@ export const useDashboardTerminal = (options) => {
     if (cached.sessionId === session.id
       && cached.rawCommand === rawCommand
       && cached.candidatesKey
-      && now - cached.at < 3000) {
-      terminalStore.appendLine(session.id, cached.candidatesKey.split('\u0001').join('  '))
+      && now - cached.at < TERMINAL_TAB_REPEAT_MS) {
+      terminalStore.appendLine(session.id, cached.candidatesKey.split(TERMINAL_CANDIDATE_SEPARATOR).join(TERMINAL_CANDIDATE_DISPLAY_SEPARATOR))
       lastTabState.value = { ...cached, at: 0 }
       if (!keepHistoryView.value) scrollToBottom()
       return
@@ -920,12 +955,12 @@ export const useDashboardTerminal = (options) => {
     tabCompletionBusy.value = true
     try {
       await sendSocketMessage(session.id, {
-        type: 'complete',
+        type: TERMINAL_WS_MESSAGE_TYPES.COMPLETE,
         command: rawCommand,
       })
     } catch (error) {
       tabCompletionBusy.value = false
-      ElMessage.warning(getErrorMessage(error, '\u547d\u4ee4\u53d1\u9001\u5931\u8d25'))
+      ElMessage.warning(getErrorMessage(error, terminalMessages.commandSendFailed))
     }
   }
 
@@ -959,10 +994,13 @@ export const useDashboardTerminal = (options) => {
       event.preventDefault()
       const session = activeSession.value
       if (!session || session.locked) return
-      sendSocketMessage(session.id, { type: 'input', text: '\u0003' }).catch(() => {
-        terminalStore.appendLine(session.id, '^C')
+      sendSocketMessage(session.id, { type: TERMINAL_WS_MESSAGE_TYPES.INPUT, text: TERMINAL_CTRL_C_INPUT }).catch(() => {
+        terminalStore.appendLine(session.id, TERMINAL_CTRL_C_DISPLAY_TEXT)
       })
-      if (typeof onCtrlC === 'function') {
+      const foregroundProject = typeof getForegroundProjectBySessionId === 'function'
+        ? getForegroundProjectBySessionId(String(session.id))
+        : null
+      if (foregroundProject?.id && typeof onCtrlC === 'function') {
         onCtrlC({ session, appendLine: (line) => terminalStore.appendLine(session.id, line), skipBackendStop: true })
       }
       if (!keepHistoryView.value) {

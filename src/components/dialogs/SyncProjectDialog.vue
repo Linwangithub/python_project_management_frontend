@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="同步已有项目"
+    :title="syncProjectDialogComponentText.title"
     :width="width || '920px'"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -114,7 +114,7 @@
             >
               <div v-if="field.loading" class="nginx-conf-loading">
                 <el-icon class="is-loading"><Loading /></el-icon>
-                <span>正在加载Nginx配置文件...</span>
+                <span>{{ syncProjectDialogComponentText.nginxLoading }}</span>
               </div>
 
               <el-select
@@ -122,7 +122,7 @@
                 :disabled="field.disabled"
                 clearable
                 filterable
-                placeholder="请选择已有Nginx配置文件"
+                :placeholder="syncProjectDialogComponentText.chooseExistingConfPlaceholder"
                 style="width: 100%"
                 @change="handleExistingConfChange"
                 @clear="handleExistingConfChange('')"
@@ -136,7 +136,7 @@
                 />
               </el-select>
               <div class="field-hint" :class="form.nginxConfPath ? 'success' : 'warning'">
-                {{ form.nginxConfPath ? `已选择：${form.nginxConfPath}` : '同步已有项目只选择已存在的Nginx配置文件，不新建配置文件。' }}
+                {{ form.nginxConfPath ? syncProjectDialogComponentText.selectedConf(form.nginxConfPath) : syncProjectDialogComponentText.existingConfOnlyTip }}
               </div>
             </div>
 
@@ -144,8 +144,8 @@
               v-else-if="field.component === 'switch'"
               v-model="form[field.key]"
               :disabled="field.disabled"
-              :active-text="field.activeText || '启用'"
-              :inactive-text="field.inactiveText || '不启用'"
+              :active-text="field.activeText || syncProjectDialogComponentText.switchActiveDefault"
+              :inactive-text="field.inactiveText || syncProjectDialogComponentText.switchInactiveDefault"
             />
 
             <el-button
@@ -155,7 +155,7 @@
               :loading="field.loading"
               @click="handleButtonClick(field)"
             >
-              {{ field.buttonText || '检测' }}
+              {{ field.buttonText || syncProjectDialogComponentText.buttonDefault }}
             </el-button>
 
             <div v-else-if="field.component === 'hint'" class="field-hint" :class="field.hintType || ''">
@@ -167,8 +167,8 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :disabled="confirmDisabled" @click="emit('confirm')">确认同步</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ syncProjectDialogComponentText.cancel }}</el-button>
+      <el-button type="primary" :disabled="confirmDisabled" @click="emit('confirm')">{{ syncProjectDialogComponentText.confirmSync }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -176,6 +176,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
+import { syncProjectDialogComponentText } from '@/config/project/project.dialog.messages.config'
 
 const props = defineProps(['modelValue', 'width', 'fields', 'form'])
 const emit = defineEmits([

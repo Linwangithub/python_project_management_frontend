@@ -3,6 +3,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { projectApi } from '@/api/project'
 import { getErrorMessage } from '@/utils/request'
 import { fillDeleteText, getProjectDeleteScopeOptions } from '../dialogUtils'
+import { PROJECT_DELETE_DIALOG_TEXT } from '@/config/project/project.workflow.config'
 
 const PROJECT_DELETE_SCOPE_WRAP_STYLE = 'width:100%;padding-top:4px;'
 const PROJECT_DELETE_SCOPE_CARD_STYLE = 'display:flex;align-items:flex-start;gap:10px;width:100%;padding:10px 12px;margin:8px 0;border:1px solid #e4e7ed;border-radius:8px;cursor:pointer;'
@@ -26,12 +27,12 @@ export const useProjectDeleteDialog = (options) => {
   const deleteProject = async (project) => {
     try {
       await ElMessageBox.confirm(
-        '该操作会不可逆，谨慎操作。',
-        '删除风险提示',
+        PROJECT_DELETE_DIALOG_TEXT.riskContent,
+        PROJECT_DELETE_DIALOG_TEXT.riskTitle,
         {
           type: 'warning',
-          confirmButtonText: '确认',
-          cancelButtonText: '取消',
+          confirmButtonText: PROJECT_DELETE_DIALOG_TEXT.confirm,
+          cancelButtonText: PROJECT_DELETE_DIALOG_TEXT.cancel,
         },
       )
     } catch {
@@ -44,13 +45,13 @@ export const useProjectDeleteDialog = (options) => {
       let selectedScope = deleteScopeOptions[0].value
 
       await ElMessageBox({
-        title: '删除范围选择',
+        title: PROJECT_DELETE_DIALOG_TEXT.scopeTitle,
         customClass: 'project-delete-scope-box',
         width: '560px',
         message: () =>
           h('div', { style: PROJECT_DELETE_SCOPE_WRAP_STYLE }, [
-            h('div', { style: 'margin-bottom: 6px; font-size: 14px; font-weight: 600; color: #303133;' }, '请选择删除范围'),
-            h('div', { style: 'margin-bottom: 10px; font-size: 12px; color: #909399;' }, '不同选项会影响项目目录、Conda环境和数据库。'),
+            h('div', { style: 'margin-bottom: 6px; font-size: 14px; font-weight: 600; color: #303133;' }, PROJECT_DELETE_DIALOG_TEXT.chooseScope),
+            h('div', { style: 'margin-bottom: 10px; font-size: 12px; color: #909399;' }, PROJECT_DELETE_DIALOG_TEXT.scopeHelp),
             ...deleteScopeOptions.map((opt) =>
               h('label', {
                 style: selectedScope === opt.value ? PROJECT_DELETE_SCOPE_CARD_ACTIVE_STYLE : PROJECT_DELETE_SCOPE_CARD_STYLE,
@@ -71,8 +72,8 @@ export const useProjectDeleteDialog = (options) => {
             ),
           ]),
         showCancelButton: true,
-        confirmButtonText: '确认',
-        cancelButtonText: '取消',
+        confirmButtonText: PROJECT_DELETE_DIALOG_TEXT.confirm,
+        cancelButtonText: PROJECT_DELETE_DIALOG_TEXT.cancel,
         closeOnClickModal: false,
       })
 
@@ -91,9 +92,9 @@ export const useProjectDeleteDialog = (options) => {
       const hit = deleteScopeOptions.find((x) => x.value === deleteScope) || deleteScopeOptions[0]
       ElMessage.success(fillDeleteText(projectDeleteSuccessTextTemplate.value, project.name))
       await projectStore.loadBundle()
-      appendTerminal('[会话:' + activeSessionAlias.value + '] 删除项目 ' + project.name + '（范围：' + hit.label + '）')
+      appendTerminal(PROJECT_DELETE_DIALOG_TEXT.terminalDeleteDone(activeSessionAlias.value, project.name, hit.label))
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '删除项目失败'))
+      ElMessage.error(getErrorMessage(error, PROJECT_DELETE_DIALOG_TEXT.deleteProjectFailed))
     }
   }
 

@@ -1,4 +1,5 @@
-﻿export const userColumnsConfig = [
+/** 用户管理表格列配置。 */
+export const userColumnsConfig = [
   { key: 'username', label: '账号', minWidth: 120 },
   { key: 'password', label: '密码', minWidth: 120 },
   { key: 'role', label: '角色', width: 90 },

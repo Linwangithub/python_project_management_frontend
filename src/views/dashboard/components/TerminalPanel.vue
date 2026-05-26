@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <section class="terminal-wrap">
     <div class="session-row">
       <div
@@ -14,19 +14,19 @@
         <span
           class="tab-close"
           :class="{ disabled: session.locked }"
-          :title="session.locked ? (session.lockReason || '任务执行中，暂不可关闭') : '关闭会话'"
+          :title="session.locked ? (session.lockReason || terminalMessages.sessionLocked) : terminalPanelText.closeSession"
           @click.stop="session.locked ? undefined : emit('close-session', session.id)"
-        >×</span>
+        >{{ terminalPanelText.closeSessionSymbol }}</span>
       </div>
-      <div v-if="!terminalStore.sessions.length" class="session-empty">暂无会话，请先创建</div>
+      <div v-if="!terminalStore.sessions.length" class="session-empty">{{ terminalPanelText.sessionEmpty }}</div>
     </div>
 
     <div class="terminal-head">
-      <span>终端</span>
+      <span>{{ terminalPanelText.title }}</span>
       <div class="head-actions">
-        <el-button size="small" @click="emit('open-session')">创建会话</el-button>
-        <el-button size="small" @click="emit('upload')">上传</el-button>
-        <el-button size="small" @click="emit('download')">下载</el-button>
+        <el-button size="small" @click="emit('open-session')">{{ terminalPanelText.createSession }}</el-button>
+        <el-button size="small" @click="emit('upload')">{{ terminalPanelText.upload }}</el-button>
+        <el-button size="small" @click="emit('download')">{{ terminalPanelText.download }}</el-button>
       </div>
     </div>
 
@@ -42,14 +42,14 @@
         :key="idx"
         class="console-line"
         :class="{ 'is-empty': !String(line || '').length }"
-      >{{ String(line || '').length ? line : '\u00A0' }}</div>
+      >{{ String(line || '').length ? line : TERMINAL_EMPTY_LINE_PLACEHOLDER }}</div>
     </div>
 
     <div class="input-row">
       <el-input
         v-model="commandInputProxy"
         :disabled="activeSessionLocked"
-        :placeholder="activeSessionLocked ? (activeSessionLockReason || '任务执行中，暂不可输入命令') : '输入命令...'"
+        :placeholder="activeSessionLocked ? (activeSessionLockReason || terminalMessages.commandBlockedByTask) : terminalPanelText.commandPlaceholder"
         @keydown.tab.prevent="emit('command-tab-complete', $event)"
         @keydown.up.prevent="emit('terminal-shortcut', $event)"
         @keydown.down.prevent="emit('terminal-shortcut', $event)"
@@ -57,13 +57,15 @@
         @keydown.ctrl.l.prevent="emit('terminal-shortcut', $event)"
         @keyup.enter="emit('execute')"
       />
-      <el-button size="small" type="primary" :disabled="activeSessionLocked" @click="emit('execute')">执行</el-button>
+      <el-button size="small" type="primary" :disabled="activeSessionLocked" @click="emit('execute')">{{ terminalPanelText.execute }}</el-button>
     </div>
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { TERMINAL_EMPTY_LINE_PLACEHOLDER } from '@/config/terminal/terminal.control.config'
+import { terminalMessages, terminalPanelText } from '@/config/terminal/terminal.messages.config'
 
 const props = defineProps(['terminalStore', 'terminalLines', 'commandInput', 'activeSessionLocked', 'activeSessionLockReason'])
 

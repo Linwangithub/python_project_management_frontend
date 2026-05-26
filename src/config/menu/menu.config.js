@@ -7,6 +7,13 @@ import { userColumnsConfig } from '@/config/table/user.columns.config'
 import { envColumnsConfig } from '@/config/table/env.columns.config'
 import { serverColumnsConfig } from '@/config/table/server.columns.config'
 
+/**
+ * 左侧菜单与各菜单表格、操作按钮配置。
+ *
+ * 作用：
+ * - 统一维护菜单名称、列名和动作按钮名称。
+ * - Dashboard 根据该配置生成菜单视图。
+ */
 export const menuConfig = [
   {
     key: 'projects',

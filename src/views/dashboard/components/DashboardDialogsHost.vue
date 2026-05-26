@@ -132,7 +132,7 @@
 
   <ServerUserDialog
     :model-value="serverAddUserDialogVisible"
-    title="增加用户"
+    :title="serverUserDialogText.addTitle"
     :width="serverUserDialogWidth"
     :fields="serverAddUserDialogFieldsForView"
     :form="serverAddUserForm"
@@ -142,7 +142,7 @@
 
   <ServerUserDialog
     :model-value="serverDeleteUserDialogVisible"
-    title="删除用户"
+    :title="serverUserDialogText.deleteTitle"
     :width="serverUserDialogWidth"
     :fields="serverDeleteUserDialogFieldsForView"
     :form="serverDeleteUserForm"
@@ -167,6 +167,7 @@ import CreateServerDialog from '@/components/dialogs/CreateServerDialog.vue'
 import CreateSessionDialog from '@/components/dialogs/CreateSessionDialog.vue'
 import DeleteUserDialog from '@/components/dialogs/DeleteUserDialog.vue'
 import ServerUserDialog from '@/components/dialogs/ServerUserDialog.vue'
+import { serverUserDialogText } from '@/config/dialog/dialog.text.config'
 
 defineProps([
   'projectDrawerVisible',

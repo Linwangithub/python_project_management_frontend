@@ -1,3 +1,12 @@
+/**
+ * Dashboard 表格动作转发组合函数。
+ *
+ * 参数：
+ * - options.dialogs：弹框与业务动作处理器集合。
+ *
+ * 返回：
+ * - 表格组件可直接绑定的动作回调。
+ */
 export const useDashboardActions = (options) => {
   const { dialogs } = options
 

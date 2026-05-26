@@ -7,10 +7,20 @@ import {
   DEFAULT_DB_PASSWORD,
   DEFAULT_DB_PORT,
   DEFAULT_DB_USER,
-  PROJECT_CREATING_TEXT,
-  PROJECT_SETTING_TEXT,
-  PROJECT_SYNCING_TEXT,
+  DEFAULT_ENV_DESCRIPTION,
+  DEFAULT_ENV_NAME,
+  DEFAULT_ENV_PYTHON_VERSION,
+  DEFAULT_SERVER_REMARK,
+  DEFAULT_SETTING_REMARK,
+  DASHBOARD_OPERATION_TEXT,
+  PROJECT_BUSY_STATUS_TEXTS,
+  PROJECT_RUNTIME_TEXT,
   PROJECT_RUNNING_TEXT,
+  PROJECT_SETTING_DATABASE_TERMINAL_FIELDS,
+  PROJECT_SETTING_NGINX_TERMINAL_FIELDS,
+  PROJECT_SETTING_TERMINAL_FIELDS,
+  PROJECT_SETTING_TERMINAL_FACTORY,
+  PROJECT_SETTING_TERMINAL_TEXT,
   PROJECT_STOPPED_TEXT,
 } from './dialogConstants'
 import {
@@ -26,6 +36,13 @@ import {
   fillProjectSettingForm,
 } from './project-setting/projectSettingMapper'
 
+/**
+ * Dashboard 弹框与项目操作组合函数。
+ *
+ * 作用：
+ * - 统一管理新建、同步、设置、详情、日志、删除等弹框状态。
+ * - 连接项目 Store、终端 Store、接口请求和页面提示。
+ */
 export const useDashboardDialogs = (options) => {
   const {
     layout,
@@ -157,15 +174,15 @@ export const useDashboardDialogs = (options) => {
   })
 
   const envCreateForm = reactive({
-    name: 'demo_api',
-    pythonVersion: '3.11',
-    description: '用于快速创建，来源于历史项目',
+    name: DEFAULT_ENV_NAME,
+    pythonVersion: DEFAULT_ENV_PYTHON_VERSION,
+    description: DEFAULT_ENV_DESCRIPTION,
   })
 
   const serverCreateForm = reactive({
     ip: '',
     rootPassword: '',
-    remark: '新服务器',
+    remark: DEFAULT_SERVER_REMARK,
   })
 
   const settingForm = reactive({
@@ -220,7 +237,7 @@ export const useDashboardDialogs = (options) => {
     databasePort: DEFAULT_DB_PORT,
     databaseUser: DEFAULT_DB_USER,
     databasePassword: DEFAULT_DB_PASSWORD,
-    remark: '配置后会覆盖 Nginx 端口信息',
+    remark: DEFAULT_SETTING_REMARK,
   })
 
   const copyForm = reactive({
@@ -335,8 +352,8 @@ export const useDashboardDialogs = (options) => {
     }
     projectDialogVisible.value = false
     envDialogVisible.value = false
-    const entityLabel = entity === 'env' ? '环境' : String(entity || '')
-    ElMessage.success(`${entityLabel}创建成功（原型）`)
+    const entityLabel = entity === 'env' ? DASHBOARD_OPERATION_TEXT.envLabel : String(entity || '')
+    ElMessage.success(`${entityLabel}${DASHBOARD_OPERATION_TEXT.prototypeCreatedSuffix}`)
   }
 
   const confirmCreateServer = async () => {
@@ -345,7 +362,7 @@ export const useDashboardDialogs = (options) => {
     const remark = String(serverCreateForm.remark || '').trim()
 
     if (!ip) {
-      ElMessage.warning('服务器IP不能为空')
+      ElMessage.warning(DASHBOARD_OPERATION_TEXT.serverIpRequired)
       return
     }
 
@@ -356,10 +373,10 @@ export const useDashboardDialogs = (options) => {
         remark,
       })
       serverDialogVisible.value = false
-      ElMessage.success('创建服务器成功')
+      ElMessage.success(DASHBOARD_OPERATION_TEXT.createServerSuccess)
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '创建服务器失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.createServerFailed))
     }
   }
 
@@ -367,21 +384,21 @@ export const useDashboardDialogs = (options) => {
     const username = createUserForm.username.trim()
     const password = createUserForm.password.trim()
     if (!username) {
-      ElMessage.warning('请输入账号')
+      ElMessage.warning(DASHBOARD_OPERATION_TEXT.usernameRequired)
       return
     }
     if (!password) {
-      ElMessage.warning('请输入密码')
+      ElMessage.warning(DASHBOARD_OPERATION_TEXT.passwordRequired)
       return
     }
 
     try {
       await projectApi.createUser({ username, password, role: 'user' })
       userDialogVisible.value = false
-      ElMessage.success('创建成功')
+      ElMessage.success(DASHBOARD_OPERATION_TEXT.createSuccess)
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '创建失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.createFailed))
     }
   }
 
@@ -394,7 +411,7 @@ export const useDashboardDialogs = (options) => {
       const resp = await projectApi.getProjectDetail(project.id)
       selectedProjectDetail.value = resp.data?.data || null
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '加载项目详情失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.loadProjectDetailFailed))
     } finally {
       projectDetailLoading.value = false
     }
@@ -409,7 +426,7 @@ export const useDashboardDialogs = (options) => {
       const resp = await projectApi.listProjectLogs(project.id)
       projectLogData.value = resp.data?.data || projectLogData.value
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '加载项目日志失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.loadProjectLogFailed))
     } finally {
       projectLogLoading.value = false
     }
@@ -440,44 +457,104 @@ export const useDashboardDialogs = (options) => {
 
   const terminalValue = (value) => {
     const text = String(value ?? '').trim()
-    return text || '空字符'
+    return text || PROJECT_SETTING_TERMINAL_TEXT.emptyValue
   }
 
-  const settingModifyText = (enabled) => (enabled ? '已开启修改' : '未修改')
+  const settingModifyText = (enabled) => (
+    enabled
+      ? PROJECT_SETTING_TERMINAL_TEXT.modifyEnabled
+      : PROJECT_SETTING_TERMINAL_TEXT.modifyDisabled
+  )
+
+  const payloadFieldValue = (payload, field) => {
+    if (Array.isArray(field.payloadKeys)) {
+      return field.payloadKeys.map((key) => terminalValue(payload[key])).join(field.separator || '')
+    }
+    return terminalValue(payload[field.payloadKey])
+  }
 
   const buildSettingTerminalPlan = (payload) => {
     const steps = []
-    steps.push(`步骤1 项目描述：${terminalValue(payload.description)}（${settingModifyText(settingForm.descriptionModifyEnabled)}）`)
-    steps.push(`步骤2 Conda环境：${terminalValue(payload.conda_env_name)}（${settingModifyText(settingForm.condaModifyEnabled)}）`)
-    steps.push(`      Python版本：${terminalValue(payload.python_version)}`)
+    PROJECT_SETTING_TERMINAL_FIELDS.forEach((field) => {
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.fieldLine(
+        field,
+        payloadFieldValue(payload, field),
+        settingModifyText(settingForm[field.modifyKey]),
+      ))
+      if (field.step === 2) {
+        steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(
+          PROJECT_SETTING_TERMINAL_TEXT.pythonVersionLabel,
+          terminalValue(payload.python_version),
+        ))
+      }
+    })
     if (payload.create_conda_env) {
-      steps.push('      Conda处理：创建新环境')
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(
+        PROJECT_SETTING_TERMINAL_TEXT.condaHandleLabel,
+        PROJECT_SETTING_TERMINAL_TEXT.condaCreate,
+      ))
     } else if (payload.drop_original_conda_env) {
-      steps.push('      Conda处理：删除原环境')
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(
+        PROJECT_SETTING_TERMINAL_TEXT.condaHandleLabel,
+        PROJECT_SETTING_TERMINAL_TEXT.condaDropOriginal,
+      ))
     } else {
-      steps.push('      Conda处理：无额外操作')
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(
+        PROJECT_SETTING_TERMINAL_TEXT.condaHandleLabel,
+        PROJECT_SETTING_TERMINAL_TEXT.condaNoExtraAction,
+      ))
     }
-    steps.push(`步骤3 项目入口文件：${terminalValue(payload.entry_file_path)}（${settingModifyText(settingForm.entryFilePathModifyEnabled)}）`)
-    steps.push(`步骤4 开发启动命令：${terminalValue(payload.dev_start_command)}（${settingModifyText(settingForm.devCommandModifyEnabled)}）`)
-    steps.push(`步骤5 部署启动命令：${terminalValue(payload.deploy_start_command)}（${settingModifyText(settingForm.deployCommandModifyEnabled)}）`)
     if (payload.nginx_enabled) {
-      steps.push(`步骤6 Nginx配置：启用（${settingForm.nginxModifyEnabled ? '已开启修改' : '未修改或仅启用'}）`)
-      steps.push(`      Nginx服务器IP：${terminalValue(payload.nginx_server_ip)}`)
-      steps.push(`      Nginx配置文件：${terminalValue(payload.nginx_conf_path)}`)
-      steps.push(`      Nginx前端端口：${terminalValue(payload.frontend_port)}`)
-      steps.push(`      后端部署端口：${terminalValue(payload.backend_deploy_port)}`)
-      steps.push(`      原Nginx配置：${payload.drop_original_nginx_config ? '删除原配置' : '保留或无原配置'}`)
+      const nginxModifyText = settingForm.nginxModifyEnabled
+        ? PROJECT_SETTING_TERMINAL_TEXT.modifyEnabled
+        : PROJECT_SETTING_TERMINAL_TEXT.modifyDisabledOrOnlyEnable
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.statusLine(
+        6,
+        PROJECT_SETTING_TERMINAL_TEXT.step6NginxTitle,
+        PROJECT_SETTING_TERMINAL_TEXT.enabled,
+        nginxModifyText,
+      ))
+      PROJECT_SETTING_NGINX_TERMINAL_FIELDS.forEach((field) => {
+        steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(field.label, payloadFieldValue(payload, field)))
+      })
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(
+        PROJECT_SETTING_TERMINAL_TEXT.originalNginxLabel,
+        payload.drop_original_nginx_config
+          ? PROJECT_SETTING_TERMINAL_TEXT.dropOriginalNginx
+          : PROJECT_SETTING_TERMINAL_TEXT.keepOrNoOriginalNginx,
+      ))
     } else {
-      steps.push('步骤6 Nginx配置：不启用')
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.statusLine(
+        6,
+        PROJECT_SETTING_TERMINAL_TEXT.step6NginxTitle,
+        PROJECT_SETTING_TERMINAL_TEXT.disabled,
+      ))
     }
     if (String(payload.database_name || '').trim()) {
-      steps.push(`步骤7 数据库配置：启用（${settingForm.databaseModifyEnabled ? '已开启修改' : '未修改或仅启用'}）`)
-      steps.push(`      数据库名称：${terminalValue(payload.database_name)}`)
-      steps.push(`      数据库地址：${terminalValue(payload.database_host)}:${terminalValue(payload.database_port)}`)
-      steps.push(`      数据库账号：${terminalValue(payload.database_user)}`)
-      steps.push(`      原数据库：${payload.drop_original_database ? '删除原数据库' : '保留或无原数据库'}`)
+      const databaseModifyText = settingForm.databaseModifyEnabled
+        ? PROJECT_SETTING_TERMINAL_TEXT.modifyEnabled
+        : PROJECT_SETTING_TERMINAL_TEXT.modifyDisabledOrOnlyEnable
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.statusLine(
+        7,
+        PROJECT_SETTING_TERMINAL_TEXT.step7DatabaseTitle,
+        PROJECT_SETTING_TERMINAL_TEXT.enabled,
+        databaseModifyText,
+      ))
+      PROJECT_SETTING_DATABASE_TERMINAL_FIELDS.forEach((field) => {
+        steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(field.label, payloadFieldValue(payload, field)))
+      })
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.subFieldLine(
+        PROJECT_SETTING_TERMINAL_TEXT.originalDatabaseLabel,
+        payload.drop_original_database
+          ? PROJECT_SETTING_TERMINAL_TEXT.dropOriginalDatabase
+          : PROJECT_SETTING_TERMINAL_TEXT.keepOrNoOriginalDatabase,
+      ))
     } else {
-      steps.push('步骤7 数据库配置：不启用')
+      steps.push(PROJECT_SETTING_TERMINAL_FACTORY.statusLine(
+        7,
+        PROJECT_SETTING_TERMINAL_TEXT.step7DatabaseTitle,
+        PROJECT_SETTING_TERMINAL_TEXT.disabled,
+      ))
     }
     return steps
   }
@@ -499,7 +576,7 @@ export const useDashboardDialogs = (options) => {
   const saveProjectSetting = async () => {
     if (!settingForm.projectId) return
     if (!String(settingForm.entryFilePath || '').trim()) {
-      ElMessage.warning('请先选择项目入口文件位置')
+      ElMessage.warning(PROJECT_SETTING_TERMINAL_TEXT.entryPathRequired)
       return
     }
 
@@ -514,19 +591,19 @@ export const useDashboardDialogs = (options) => {
     try {
       if (typeof ensureProjectTaskSession === 'function' && serverIp) {
         sessionInfo = await ensureProjectTaskSession(serverIp, 'setting', { reuse: false })
-        lockSession(sessionInfo.localSessionId, `保存项目设置 ${settingForm.projectName} 中，请稍候`)
-        await appendSettingStep(sessionInfo.localSessionId, `1.连接目标服务器：${serverIp}   ---> 已完成`)
+        lockSession(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.lockProjectSetting(settingForm.projectName))
+        await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.connectStep(serverIp))
         await appendSettingStep(sessionInfo.localSessionId, '')
-        await appendSettingStep(sessionInfo.localSessionId, `2.开始保存项目设置：${settingForm.projectName} ---> 进行中`)
+        await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.saveStep(settingForm.projectName, PROJECT_SETTING_TERMINAL_TEXT.runningSuffix))
         const plan = buildSettingTerminalPlan(payload)
         if (typeof appendSessionLines === 'function') {
-          appendSessionLines(sessionInfo.localSessionId, plan.map((item) => `  ${item}`))
+          appendSessionLines(sessionInfo.localSessionId, plan.map((item) => PROJECT_SETTING_TERMINAL_FACTORY.indent(item)))
         } else {
           for (const item of plan) {
-            await appendSettingStep(sessionInfo.localSessionId, `  ${item}`, 0)
+            await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.indent(item), 0)
           }
         }
-        await appendSettingStep(sessionInfo.localSessionId, '  后端正在按配置差异执行实际变更，请稍候...', 0)
+        await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.indent(PROJECT_SETTING_TERMINAL_TEXT.executingDiff), 0)
       }
 
       const resp = await projectApi.updateProjectSetting(projectId, payload)
@@ -534,31 +611,31 @@ export const useDashboardDialogs = (options) => {
         projectId,
         buildProjectSettingStorePatch(settingForm),
       )
-      const msg = String(resp.data?.message || '设置保存成功')
+      const msg = String(resp.data?.message || PROJECT_SETTING_TERMINAL_TEXT.saveSuccess)
       if (sessionInfo?.localSessionId) {
         const actualActions = extractSettingActualActions(resp)
-        await appendSettingStep(sessionInfo.localSessionId, '  后端实际执行差异：', 0)
+        await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.indent(PROJECT_SETTING_TERMINAL_TEXT.actualDiffTitle), 0)
         if (actualActions.length) {
           for (const item of actualActions) {
-            await appendSettingStep(sessionInfo.localSessionId, `    - ${item}`, 0)
+            await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.appendHyphen(item), 0)
           }
         } else {
-          await appendSettingStep(sessionInfo.localSessionId, '    - 无实际变更', 0)
+          await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.appendHyphen(PROJECT_SETTING_TERMINAL_TEXT.noActualDiff), 0)
         }
-        await appendSettingStep(sessionInfo.localSessionId, `2.开始保存项目设置：${settingForm.projectName} ---> 已完成`)
+        await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.saveStep(settingForm.projectName, PROJECT_SETTING_TERMINAL_TEXT.connectDoneSuffix))
       }
       ElMessage.success(msg)
       await projectStore.loadBundle()
       if (sessionInfo?.localSessionId) {
         await appendSettingStep(sessionInfo.localSessionId, '')
-        await appendSettingStep(sessionInfo.localSessionId, '3.项目设置保存成功', 0)
+        await appendSettingStep(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.finalStep(), 0)
       }
     } catch (error) {
-      const msg = getErrorMessage(error, '设置保存失败')
+      const msg = getErrorMessage(error, PROJECT_SETTING_TERMINAL_TEXT.saveFailed)
       if (sessionInfo?.localSessionId) {
-        appendSessionLine(sessionInfo.localSessionId, `设置失败：${msg}`)
+        appendSessionLine(sessionInfo.localSessionId, PROJECT_SETTING_TERMINAL_FACTORY.failed(msg))
       } else {
-        appendTerminal(`[会话:${activeSessionAlias.value}] ${settingForm.projectName} 设置失败：${msg}`)
+        appendTerminal(PROJECT_SETTING_TERMINAL_FACTORY.failed(`${settingForm.projectName} ${msg}`))
       }
       ElMessage.error(msg)
       await projectStore.loadBundle()
@@ -586,13 +663,13 @@ export const useDashboardDialogs = (options) => {
         target_dir: copyForm.targetDir,
       })
       copyDialogVisible.value = false
-      ElMessage.success('复制项目成功')
+      ElMessage.success(DASHBOARD_OPERATION_TEXT.copyProjectSuccess)
       appendTerminal(
-        `[会话:${activeSessionAlias.value}] 复制 ${copyForm.projectName} 到 ${copyForm.targetServerIp}:${copyForm.targetDir}`,
+        DASHBOARD_OPERATION_TEXT.copyTerminal(activeSessionAlias.value, copyForm.projectName, copyForm.targetServerIp, copyForm.targetDir),
       )
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '复制失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.copyFailed))
     }
   }
 
@@ -610,13 +687,13 @@ export const useDashboardDialogs = (options) => {
         target_dir: exportForm.targetDir,
       })
       exportDialogVisible.value = false
-      ElMessage.success('导出项目成功')
+      ElMessage.success(DASHBOARD_OPERATION_TEXT.exportProjectSuccess)
       appendTerminal(
-        `[会话:${activeSessionAlias.value}] 导出 ${exportForm.projectName} 到本机目录 ${exportForm.targetDir}`,
+        DASHBOARD_OPERATION_TEXT.exportTerminal(activeSessionAlias.value, exportForm.projectName, exportForm.targetDir),
       )
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '导出失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.exportFailed))
     }
   }
 
@@ -635,20 +712,20 @@ export const useDashboardDialogs = (options) => {
     const label = typeof button === 'string' ? button : button?.label
     const project = findToolProject()
     if (!project) {
-      ElMessage.warning('未找到当前项目')
+      ElMessage.warning(DASHBOARD_OPERATION_TEXT.projectNotFound)
       return
     }
-    if (label === '复制项目') {
+    if (label === DASHBOARD_OPERATION_TEXT.copyProject) {
       toolDialogVisible.value = false
       openCopyDialog(project)
       return
     }
-    if (label === '导出项目') {
+    if (label === DASHBOARD_OPERATION_TEXT.exportProject) {
       toolDialogVisible.value = false
       openExportDialog(project)
       return
     }
-    ElMessage.info('该工具暂未开发')
+    ElMessage.info(DASHBOARD_OPERATION_TEXT.toolTodo)
   }
 
   const openDeleteUserDialog = (userRow) => {
@@ -665,14 +742,14 @@ export const useDashboardDialogs = (options) => {
       projectStore.removeUser(deleteUserTarget.value.id)
       deleteUserDialogVisible.value = false
       if (deleteUserMigrate.value === 'yes') {
-        ElMessage.success(`已删除 ${username}，项目已迁移`)
-        appendTerminal(`[会话:${activeSessionAlias.value}] 删除 ${username}，项目已迁移到 root 目录`)
+        ElMessage.success(PROJECT_RUNTIME_TEXT.userDeleteSuccess(username, PROJECT_RUNTIME_TEXT.userProjectsMigratedSuffix))
+        appendTerminal(PROJECT_RUNTIME_TEXT.userDeleteTerminal(activeSessionAlias.value, username, PROJECT_RUNTIME_TEXT.userProjectsMigratedToRootSuffix))
       } else {
         ElMessage.success(fillDeleteText(userDeleteSuccessTextTemplate.value, username))
-        appendTerminal(`[会话:${activeSessionAlias.value}] 删除 ${username}，未迁移项目`)
+        appendTerminal(PROJECT_RUNTIME_TEXT.userDeleteTerminal(activeSessionAlias.value, username, PROJECT_RUNTIME_TEXT.userProjectsNotMigratedSuffix))
       }
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '删除用户失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.deleteUserFailed))
     }
   }
 
@@ -684,10 +761,10 @@ export const useDashboardDialogs = (options) => {
 
   const handleEnvAction = (actionCode) => {
     if (actionCode === 'view') {
-      notify('查看环境主包与版本')
+      notify(DASHBOARD_OPERATION_TEXT.envViewPackages)
       return
     }
-    notify('环境操作已触发')
+    notify(DASHBOARD_OPERATION_TEXT.envActionTriggered)
   }
 
   const { deleteProject } = useProjectDeleteDialog({
@@ -712,10 +789,10 @@ export const useDashboardDialogs = (options) => {
       const resp = await projectApi.checkProjectHealth(project.id)
       const data = resp.data?.data || {}
       projectStore.updateProjectHealth(project.id, data)
-      const statusText = data.project_status || data.projectStatus || '检测完成'
-      ElMessage.success(`项目状态检测完成：${statusText}`)
+      const statusText = data.project_status || data.projectStatus || DASHBOARD_OPERATION_TEXT.projectHealthDefault
+      ElMessage.success(DASHBOARD_OPERATION_TEXT.projectHealthSuccess(statusText))
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '项目状态检测失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.projectHealthCheckFailed))
     } finally {
       projectStore.setProjectHealthChecking(project.id, false)
     }
@@ -730,40 +807,21 @@ export const useDashboardDialogs = (options) => {
       const resp = await projectApi.checkProjectHealth(project.id)
       const data = resp.data?.data || {}
       projectStore.updateProjectServiceStatus(project.id, data)
-      const statusText = data.service_status || data.serviceStatus || data.status || '已停止'
+      const statusText = data.service_status || data.serviceStatus || data.status || PROJECT_STOPPED_TEXT
       const runningPort = data.running_port || data.runningPort || ''
-      if (String(statusText).trim() === '运行中' && runningPort) {
-        ElMessage.success(`服务状态检测完成：运行中，端口 ${runningPort}`)
+      if (String(statusText).trim() === PROJECT_RUNNING_TEXT && runningPort) {
+        ElMessage.success(DASHBOARD_OPERATION_TEXT.serviceHealthRunning(runningPort))
       } else {
-        ElMessage.success(`服务状态检测完成：${statusText}`)
+        ElMessage.success(DASHBOARD_OPERATION_TEXT.serviceHealthSuccess(statusText))
       }
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '服务状态检测失败'))
+      ElMessage.error(getErrorMessage(error, DASHBOARD_OPERATION_TEXT.serviceHealthCheckFailed))
     } finally {
       projectStore.setProjectServiceChecking(project.id, false)
     }
   }
 
-  const RUNTIME_TEXT = {
-    noSteps: '暂无执行步骤',
-    taskRunningSuffix: '中，请稍候',
-    connectTarget: '连接目标服务器',
-    session: '会话',
-    alreadyRunning: '项目已在运行中',
-    startForeground: '前台启动',
-    startBackground: '后台启动',
-    deployStart: '部署启动',
-    stopService: '停止服务',
-    startForegroundOk: '前台启动成功',
-    startBackgroundOk: '后台启动成功',
-    deployStartOk: '部署启动成功',
-    stopServiceOk: '停止服务成功',
-    startForegroundFail: '前台启动失败',
-    startBackgroundFail: '后台启动失败',
-    deployStartFail: '部署启动失败',
-    stopServiceFail: '停止服务失败',
-    stoppedAlready: '项目已停止',
-  }
+  const RUNTIME_TEXT = PROJECT_RUNTIME_TEXT
 
   const appendRuntimeTerminalSteps = async (sessionId, project, data, title) => {
     if (!sessionId) return
@@ -778,7 +836,7 @@ export const useDashboardDialogs = (options) => {
       appendSessionLine(sessionId, value)
     }
 
-    appendSessionLine(sessionId, `${title}：${project.name}`)
+    appendSessionLine(sessionId, PROJECT_SETTING_TERMINAL_FACTORY.runtimeTitle(project.name, title))
     if (!steps.length) {
       appendVisibleLine(data?.message || RUNTIME_TEXT.noSteps)
       return
@@ -829,16 +887,16 @@ export const useDashboardDialogs = (options) => {
     if (typeof ensureProjectTaskSession === 'function' && serverIp) {
       sessionInfo = await ensureProjectTaskSession(serverIp, 'foreground')
     }
-    if (!sessionInfo?.localSessionId) throw new Error('\u65e0\u6cd5\u521b\u5efa\u524d\u53f0\u542f\u52a8\u7ec8\u7aef\u4f1a\u8bdd')
+    if (!sessionInfo?.localSessionId) throw new Error(RUNTIME_TEXT.createForegroundSessionFailed)
 
     try {
       const prepareResp = await projectApi.prepareStartForeground(project.id)
       const prepare = prepareResp.data?.data || {}
-      if (!prepare.command) throw new Error('\u6682\u65e0\u914d\u7f6e\u542f\u52a8\u547d\u4ee4')
-      if (typeof runProjectForegroundInSession !== 'function') throw new Error('\u7ec8\u7aef\u524d\u53f0\u542f\u52a8\u80fd\u529b\u672a\u521d\u59cb\u5316')
+      if (!prepare.command) throw new Error(RUNTIME_TEXT.startCommandMissing)
+      if (typeof runProjectForegroundInSession !== 'function') throw new Error(RUNTIME_TEXT.foregroundRunnerMissing)
       await runProjectForegroundInSession(sessionInfo.localSessionId, prepare)
       foregroundProjectBySessionId[String(sessionInfo.localSessionId)] = { id: project.id, name: project.name }
-      ElMessage.success('\u524d\u53f0\u542f\u52a8\u547d\u4ee4\u5df2\u53d1\u9001\uff0c\u5b9e\u9645\u8f93\u51fa\u8bf7\u67e5\u770b\u53f3\u4fa7\u7ec8\u7aef')
+      ElMessage.success(RUNTIME_TEXT.foregroundCommandSent)
     } catch (error) {
       const msg = getErrorMessage(error, RUNTIME_TEXT.startForegroundFail)
       appendSessionLine(sessionInfo.localSessionId, msg)
@@ -848,8 +906,8 @@ export const useDashboardDialogs = (options) => {
   const handleProjectAction = async (actionCode, project) => {
     if (!canAction('projects', actionCode)) return
     const projectStatus = String(project?.status || '').trim()
-    if (projectStore.isProjectBusy(project?.id) || [PROJECT_CREATING_TEXT, PROJECT_SETTING_TEXT, PROJECT_SYNCING_TEXT].includes(projectStatus)) {
-      ElMessage.warning('项目任务正在执行中，请等待后端实际返回后再操作')
+    if (projectStore.isProjectBusy(project?.id) || PROJECT_BUSY_STATUS_TEXTS.includes(projectStatus)) {
+      ElMessage.warning(RUNTIME_TEXT.projectBusy)
       return
     }
 
@@ -970,17 +1028,45 @@ export const useDashboardDialogs = (options) => {
     }
   }
 
-  const getForegroundProjectBySessionId = (sessionId) => foregroundProjectBySessionId[String(sessionId || '')] || null
+  /**
+   * 按终端会话 ID 获取前台启动项目绑定关系。
+   *
+   * 作用：
+   * - 当前页面未刷新时，优先读取 foregroundProjectBySessionId 内存映射。
+   * - 页面刷新后，内存映射会丢失，此时从 terminalStore 持久化会话字段中恢复。
+   *
+   * 参数：
+   * - sessionId：前端本地终端会话 ID。
+   *
+   * 返回：
+   * - { id, name }：前台启动项目；没有绑定时返回 null。
+   */
+  const getForegroundProjectBySessionId = (sessionId) => {
+    const key = String(sessionId || '')
+    const mapped = foregroundProjectBySessionId[key]
+    if (mapped?.id) return mapped
+
+    const session = typeof terminalStore?.getSession === 'function'
+      ? terminalStore.getSession(key)
+      : null
+    const projectId = Number(session?.foregroundProjectId || 0)
+    if (!projectId) return null
+
+    const projectName = String(session?.foregroundProjectName || '')
+    const restored = { id: projectId, name: projectName }
+    foregroundProjectBySessionId[key] = restored
+    return restored
+  }
 
   const handleTerminalCtrlC = async ({ session, appendLine, onStopped } = {}) => {
     const sessionId = String(session?.id || '')
-    const target = foregroundProjectBySessionId[sessionId]
+    const target = getForegroundProjectBySessionId(sessionId)
     if (!target?.id) {
-      if (typeof appendLine === 'function') appendLine('当前会话没有绑定前台启动服务')
+      if (typeof appendLine === 'function') appendLine(RUNTIME_TEXT.noForegroundServiceForSession)
       return
     }
     try {
-      if (typeof appendLine === 'function') appendLine(`正在停止 ${target.name}...`)
+      if (typeof appendLine === 'function') appendLine(PROJECT_RUNTIME_TEXT.stoppingForeground(target.name))
       const resp = await projectApi.stopProject(target.id)
       const data = resp.data?.data || {}
       const msg = String(resp.data?.message || data.message || RUNTIME_TEXT.stopServiceOk)

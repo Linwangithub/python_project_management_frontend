@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="新建项目"
+    :title="createProjectDialogComponentText.title"
     :width="width"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -98,7 +98,7 @@
                 <el-icon class="is-loading">
                   <Loading />
                 </el-icon>
-                <span>正在加载Nginx配置文件...</span>
+                <span>{{ createProjectDialogComponentText.nginxLoading }}</span>
               </div>
 
               <el-row class="nginx-conf-row" :gutter="12">
@@ -107,12 +107,12 @@
                     class="nginx-conf-card"
                     :class="{ active: hasExistingConfPath, 'is-card-disabled': hasNewConfDraft }"
                   >
-                    <div class="nginx-conf-card__title">使用已有配置文件</div>
+                    <div class="nginx-conf-card__title">{{ createProjectDialogComponentText.useExistingConfTitle }}</div>
                     <el-select
                       v-model="form.nginxExistingConfPath"
                       :disabled="field.disabled || hasNewConfDraft"
                       clearable
-                      placeholder="请选择已有Nginx配置文件"
+                      :placeholder="createProjectDialogComponentText.chooseExistingConfPlaceholder"
                       style="width: 100%"
                       @change="handleExistingConfChange"
                       @clear="handleExistingConfChange('')"
@@ -130,7 +130,7 @@
                       </el-option>
                     </el-select>
                     <div class="nginx-conf-preview" :class="{ danger: hasNewConfDraft }">
-                      {{ hasNewConfDraft ? '右侧已填写内容，当前区域已置灰并清空不可继续编辑' : '请选择一个已有配置文件路径' }}
+                      {{ hasNewConfDraft ? createProjectDialogComponentText.existingDisabledByNewTip : createProjectDialogComponentText.existingConfTip }}
                     </div>
                   </div>
                 </el-col>
@@ -140,7 +140,7 @@
                     class="nginx-conf-card"
                     :class="{ active: hasNewConfDraft, 'is-card-disabled': hasExistingConfPath }"
                   >
-                    <div class="nginx-conf-card__title">新建配置文件</div>
+                    <div class="nginx-conf-card__title">{{ createProjectDialogComponentText.createNewConfTitle }}</div>
                     <el-cascader
                       v-model="form.nginxNewConfDirCascaderValue"
                       class="nginx-dir-cascader"
@@ -150,18 +150,18 @@
                       clearable
                       filterable
                       :show-all-levels="false"
-                      placeholder="请选择Nginx配置目录"
+                      :placeholder="createProjectDialogComponentText.chooseNginxDirPlaceholder"
                       @change="handleNewConfDirCascaderChange"
                       @clear="handleNewConfDirClear"
                     />
                     <div class="selected-line">
-                      <span class="selected-label">已选择：</span>
+                      <span class="selected-label">{{ createProjectDialogComponentText.selectedLabel }}</span>
                       <span class="selected-value">{{ selectedNginxDirText || ' ' }}</span>
                     </div>
                     <el-input
                       v-model="form.nginxNewConfFileName"
                       :disabled="field.disabled || hasExistingConfPath || !form.nginxNewConfDirPath"
-                      placeholder="请输入配置文件名，例如 pspm-project.conf"
+                      :placeholder="createProjectDialogComponentText.confFileNamePlaceholder"
                       @input="handleNewConfChange"
                     />
                     <div class="nginx-conf-preview" :class="{ danger: isNewConfFileInvalid }">
@@ -183,8 +183,8 @@
               v-else-if="field.component === 'switch'"
               v-model="form[field.key]"
               :disabled="field.disabled"
-              :active-text="field.activeText || '开'"
-              :inactive-text="field.inactiveText || '关'"
+              :active-text="field.activeText || createProjectDialogComponentText.switchActiveDefault"
+              :inactive-text="field.inactiveText || createProjectDialogComponentText.switchInactiveDefault"
             />
             <el-popover
               v-else-if="field.component === 'button' && field.key === 'nginxPreview'"
@@ -202,21 +202,21 @@
                   :loading="field.loading"
                   @click="handleButtonClick(field)"
                 >
-                  {{ field.buttonText || '预览详细配置' }}
+                  {{ field.buttonText || createProjectDialogComponentText.previewDetail }}
                 </el-button>
               </template>
               <div class="nginx-preview-editor">
-                <div class="nginx-preview-editor__header">Nginx详细配置</div>
+                <div class="nginx-preview-editor__header">{{ createProjectDialogComponentText.nginxPreviewTitle }}</div>
                 <el-input
                   v-model="form.nginxPreviewDraft"
                   type="textarea"
                   :rows="18"
                   resize="vertical"
-                  placeholder="请确认或调整Nginx server配置"
+                  :placeholder="createProjectDialogComponentText.nginxPreviewPlaceholder"
                 />
                 <div class="nginx-preview-editor__footer">
-                  <el-button @click="cancelPreview">取消</el-button>
-                  <el-button type="success" @click="confirmPreview">确认</el-button>
+                  <el-button @click="cancelPreview">{{ createProjectDialogComponentText.cancel }}</el-button>
+                  <el-button type="success" @click="confirmPreview">{{ createProjectDialogComponentText.confirm }}</el-button>
                 </div>
               </div>
             </el-popover>
@@ -227,7 +227,7 @@
               :loading="field.loading"
               @click="handleButtonClick(field)"
             >
-              {{ field.buttonText || '按钮' }}
+              {{ field.buttonText || createProjectDialogComponentText.buttonDefault }}
             </el-button>
             <div v-else-if="field.component === 'hint'" class="field-hint" :class="field.hintType || ''">
               {{ field.text }}
@@ -237,13 +237,13 @@
       </el-row>
     </el-form>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ createProjectDialogComponentText.cancel }}</el-button>
       <el-button
         type="primary"
         :disabled="confirmDisabled"
         @click="emit('confirm')"
       >
-        确认创建
+        {{ createProjectDialogComponentText.confirmCreate }}
       </el-button>
     </template>
   </el-dialog>
@@ -253,6 +253,11 @@
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
+import {
+  createProjectDialogComponentText,
+  createProjectMessageFactory,
+  createProjectMessages,
+} from '@/config/project/project.dialog.messages.config'
 
 const props = defineProps(['modelValue', 'width', 'fields', 'form'])
 const emit = defineEmits(['update:modelValue', 'confirm', 'name-blur', 'database-check', 'nginx-check', 'preview-nginx', 'nginx-port-blur'])
@@ -314,11 +319,11 @@ const newConfTip = computed(() => {
   const form = props.form || {}
   const dir = String(form.nginxNewConfDirPath || '').trim()
   const fileName = String(form.nginxNewConfFileName || '').trim()
-  if (!dir && !fileName) return '右侧用于创建新的 .conf 配置文件；与左侧已有配置文件二选一。'
-  if (!dir) return '请先选择配置目录。'
-  if (!fileName) return `已选择目录：${dir}`
-  if (!isValidConfFileName(fileName)) return '文件名必须以 .conf 结尾，且不能包含 / 或 \\。'
-  return `最终路径：${joinPath(dir, fileName)}`
+  if (!dir && !fileName) return createProjectDialogComponentText.newConfEmptyTip
+  if (!dir) return createProjectDialogComponentText.newConfDirRequiredTip
+  if (!fileName) return createProjectMessageFactory.newConfSelectedDir(dir)
+  if (!isValidConfFileName(fileName)) return createProjectDialogComponentText.newConfInvalidFileTip
+  return createProjectMessageFactory.newConfFinalPath(joinPath(dir, fileName))
 })
 
 const selectedNginxDirText = computed(() => {
@@ -467,15 +472,15 @@ const confirmPreview = () => {
   const backendPort = String(form.nginxBackendPort || '').trim()
 
   if (!draft) {
-    ElMessage.warning('Nginx详细配置不能为空')
+    ElMessage.warning(createProjectMessages.nginxConfigRequired)
     return
   }
   if (!nginxConfigHasListenPort(draft, frontendPort)) {
-    ElMessage.warning(`Nginx详细配置必须包含 listen ${frontendPort}`)
+    ElMessage.warning(createProjectMessageFactory.nginxListenRequired(frontendPort))
     return
   }
   if (!nginxConfigHasProxyPassPort(draft, backendPort)) {
-    ElMessage.warning(`Nginx详细配置必须包含 proxy_pass 后端端口 ${backendPort}`)
+    ElMessage.warning(createProjectMessageFactory.nginxProxyPassRequired(backendPort))
     return
   }
 

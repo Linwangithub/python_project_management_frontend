@@ -1,3 +1,4 @@
+/** 项目管理菜单的全部行操作。 */
 const allProjectActions = [
   'start_fg',
   'start_bg',
@@ -10,6 +11,16 @@ const allProjectActions = [
   'delete',
 ]
 
+/** 项目工具弹框按钮文案。 */
+const projectToolButtons = ['复制项目', '导出项目', '数据库导出数据', '导出日志文件', '上传文件到项目', '下载项目文件']
+
+/**
+ * Dashboard 视图预设配置。
+ *
+ * 作用：
+ * - 控制不同视图下展示的菜单、字段、工具栏、弹框尺寸和确认文案。
+ * - `full` 面向完整管理；`compact` 面向高频操作。
+ */
 export const viewPresetsConfig = [
   {
     key: 'full',
@@ -70,7 +81,7 @@ export const viewPresetsConfig = [
         sessionDialogWidth: '560px',
         toolDialogTitle: '项目工具',
         toolDialogWidth: '620px',
-        toolButtons: ['复制项目', '导出项目', '数据库导出数据', '导出日志文件', '上传文件到项目', '下载项目文件'],
+        toolButtons: projectToolButtons,
         deleteConfirmTitle: '删除项目',
         deleteConfirmText: '确定删除项目 {name} 吗？此操作不可逆。',
         deleteSuccessText: '项目删除成功',
@@ -98,7 +109,7 @@ export const viewPresetsConfig = [
       },
       servers: {
         menuLabel: '服务器管理',
-        menuHint: '管理服务器信息与已分配用户（默认包含 root）。',
+        menuHint: '管理服务器信息与已分配用户，默认包含 root。',
         showColumns: ['ip', 'rootPassword', 'users', 'remark'],
         actionsMinWidth: 180,
         actionsLabel: '操作',
@@ -151,7 +162,7 @@ export const viewPresetsConfig = [
         sessionDialogWidth: '560px',
         toolDialogTitle: '项目工具',
         toolDialogWidth: '620px',
-        toolButtons: ['复制项目', '导出项目', '数据库导出数据', '导出日志文件', '上传文件到项目', '下载项目文件'],
+        toolButtons: projectToolButtons,
         deleteConfirmTitle: '删除项目',
         deleteConfirmText: '确定删除项目 {name} 吗？此操作不可逆。',
         deleteSuccessText: '项目删除成功',
@@ -179,7 +190,7 @@ export const viewPresetsConfig = [
       },
       servers: {
         menuLabel: '服务器管理',
-        menuHint: '管理服务器信息与已分配用户（默认包含 root）。',
+        menuHint: '管理服务器信息与已分配用户，默认包含 root。',
         showColumns: ['ip', 'rootPassword', 'users', 'remark'],
         actionsMinWidth: 180,
         actionsLabel: '操作',

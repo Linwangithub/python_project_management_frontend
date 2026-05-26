@@ -41,13 +41,14 @@
     />
 
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" @click="emit('confirm')">确认</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ dialogCommonText.cancel }}</el-button>
+      <el-button type="primary" @click="emit('confirm')">{{ dialogCommonText.confirm }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
+import { dialogCommonText } from '@/config/dialog/dialog.text.config'
 defineProps(['modelValue', 'title', 'width', 'fields', 'form', 'dangerText'])
 const emit = defineEmits(['update:modelValue', 'confirm'])
 </script>

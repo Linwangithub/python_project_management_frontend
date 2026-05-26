@@ -34,8 +34,8 @@
           </el-button>
         </div>
 
-        <el-button v-else-if="section.type === 'create-button'" size="small" type="primary" @click="emit('create')">+ 新建</el-button>
-        <el-button v-else-if="section.type === 'sync-project-button'" size="small" type="success" plain @click="emit('sync-project')">同步</el-button>
+        <el-button v-else-if="section.type === 'create-button'" size="small" type="primary" @click="emit('create')">{{ toolbarText.createButton }}</el-button>
+        <el-button v-else-if="section.type === 'sync-project-button'" size="small" type="success" plain @click="emit('sync-project')">{{ toolbarText.syncProjectButton }}</el-button>
       </template>
     </div>
 
@@ -96,6 +96,8 @@
 <script setup>
 import { viewPresetsConfig } from '@/config/preset/view.presets.config'
 import { statusFilterOptions } from '@/config/filter/filter.config'
+import { PROJECT_BUSY_STATUS_TEXTS } from '@/config/project/project.workflow.config'
+import { toolbarText } from '@/config/toolbar/toolbar.config'
 import ProjectTableView from '@/components/tables/ProjectTableView.vue'
 import UserTableView from '@/components/tables/UserTableView.vue'
 import EnvTableView from '@/components/tables/EnvTableView.vue'
@@ -140,7 +142,7 @@ const isProjectActionDisabled = (action, row) => {
   const id = Number(row?.id || 0)
   const busyIds = Array.isArray(props.projectBusyIds) ? props.projectBusyIds.map((item) => Number(item)) : []
   if (id && busyIds.includes(id)) return true
-  return ['创建中', '设置中', '同步中'].includes(String(row?.status || '').trim())
+  return PROJECT_BUSY_STATUS_TEXTS.includes(String(row?.status || '').trim())
 }
 
 

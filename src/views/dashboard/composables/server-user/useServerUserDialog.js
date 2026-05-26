@@ -6,6 +6,7 @@ import {
 } from '@/config/dialog/dialog.fields.config'
 import { projectApi } from '@/api/project'
 import { getErrorMessage } from '@/utils/request'
+import { SERVER_USER_WORKFLOW_TEXT, serverUserWorkflowFactory } from '@/config/server/server.user.workflow.config'
 
 /**
  * Server user workflow.
@@ -42,7 +43,7 @@ export const useServerUserDialog = (options) => {
   })
 
   const serverUserDialogWidth = ref('500px')
-  const serverDeleteDangerText = ref('该操作不可逆，会清空该用户所有数据')
+  const serverDeleteDangerText = ref(SERVER_USER_WORKFLOW_TEXT.deleteDangerText)
 
 
   const openServerAddUserDialog = (serverRow) => {
@@ -63,7 +64,7 @@ export const useServerUserDialog = (options) => {
       const latest = projectStore.servers.find((x) => Number(x.id) === Number(serverRow.id)) || serverRow
       const users = getServerAssignableUsers(latest)
       if (!users.length) {
-        ElMessage.warning('暂无可删除用户')
+        ElMessage.warning(SERVER_USER_WORKFLOW_TEXT.noDeletableUser)
         return
       }
 
@@ -78,7 +79,7 @@ export const useServerUserDialog = (options) => {
 
     const username = String(serverAddUserForm.username || '').trim()
     if (!username) {
-      ElMessage.warning('请输入用户名')
+      ElMessage.warning(SERVER_USER_WORKFLOW_TEXT.usernameRequired)
       return
     }
 
@@ -88,11 +89,11 @@ export const useServerUserDialog = (options) => {
         username,
       })
       serverAddUserDialogVisible.value = false
-      ElMessage.success('增加用户成功')
-      appendTerminal(`[会话:${activeSessionAlias.value}] 服务器 ${server.ip} 新增用户 ${username}`)
+      ElMessage.success(SERVER_USER_WORKFLOW_TEXT.addUserSuccess)
+      appendTerminal(serverUserWorkflowFactory.addUserTerminal(activeSessionAlias.value, server.ip, username))
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '增加用户失败'))
+      ElMessage.error(getErrorMessage(error, SERVER_USER_WORKFLOW_TEXT.addUserFailed))
     }
   }
 
@@ -102,18 +103,18 @@ export const useServerUserDialog = (options) => {
 
     const username = String(serverDeleteUserForm.username || '').trim()
     if (!username) {
-      ElMessage.warning('请选择用户')
+      ElMessage.warning(SERVER_USER_WORKFLOW_TEXT.chooseUserRequired)
       return
     }
 
     try {
       await ElMessageBox.confirm(
-        '该操作不可逆，会清空该用户所有数据',
-        '删除用户确认',
+        SERVER_USER_WORKFLOW_TEXT.deleteDangerText,
+        SERVER_USER_WORKFLOW_TEXT.deleteUserConfirmTitle,
         {
           type: 'warning',
-          confirmButtonText: '确认',
-          cancelButtonText: '取消',
+          confirmButtonText: SERVER_USER_WORKFLOW_TEXT.confirm,
+          cancelButtonText: SERVER_USER_WORKFLOW_TEXT.cancel,
         },
       )
     } catch {
@@ -126,23 +127,23 @@ export const useServerUserDialog = (options) => {
         username,
       })
       serverDeleteUserDialogVisible.value = false
-      ElMessage.success('删除用户成功')
-      appendTerminal('[会话:' + activeSessionAlias.value + '] 服务器 ' + server.ip + ' 删除用户 ' + username + '（含 /home/' + username + '）')
+      ElMessage.success(SERVER_USER_WORKFLOW_TEXT.deleteUserSuccess)
+      appendTerminal(serverUserWorkflowFactory.deleteUserTerminal(activeSessionAlias.value, server.ip, username))
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '删除用户失败'))
+      ElMessage.error(getErrorMessage(error, SERVER_USER_WORKFLOW_TEXT.deleteUserFailed))
     }
   }
 
   const confirmDeleteServer = async (server) => {
     try {
       await ElMessageBox.confirm(
-        `确定删除服务器记录 ${server.ip} 吗？仅删除平台记录，不会操作真实服务器。`,
-        '删除服务器确认',
+        serverUserWorkflowFactory.deleteServerConfirmContent(server.ip),
+        SERVER_USER_WORKFLOW_TEXT.deleteServerConfirmTitle,
         {
           type: 'warning',
-          confirmButtonText: '确认',
-          cancelButtonText: '取消',
+          confirmButtonText: SERVER_USER_WORKFLOW_TEXT.confirm,
+          cancelButtonText: SERVER_USER_WORKFLOW_TEXT.cancel,
         },
       )
     } catch {
@@ -152,10 +153,10 @@ export const useServerUserDialog = (options) => {
     try {
       await projectApi.deleteServer([server.id])
       projectStore.removeServer(server.id)
-      ElMessage.success('删除服务器记录成功')
-      appendTerminal('[会话:' + activeSessionAlias.value + '] 删除服务器记录 ' + server.ip)
+      ElMessage.success(SERVER_USER_WORKFLOW_TEXT.deleteServerRecordSuccess)
+      appendTerminal(serverUserWorkflowFactory.deleteServerTerminal(activeSessionAlias.value, server.ip))
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '删除服务器记录失败'))
+      ElMessage.error(getErrorMessage(error, SERVER_USER_WORKFLOW_TEXT.deleteServerRecordFailed))
     }
   }
 

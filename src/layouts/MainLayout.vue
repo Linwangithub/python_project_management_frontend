@@ -5,9 +5,9 @@
       <div class="actions">
         <el-tag>{{ userLabel }}</el-tag>
         <el-button size="small" @click="layout.toggleFullTerminal">
-          {{ layout.fullTerminal ? '退出终端全屏' : '终端全屏' }}
+          {{ layout.fullTerminal ? mainLayoutText.exitTerminalFullscreen : mainLayoutText.terminalFullscreen }}
         </el-button>
-        <el-button size="small" type="danger" @click="logout">退出</el-button>
+        <el-button size="small" type="danger" @click="logout">{{ mainLayoutText.logout }}</el-button>
       </div>
     </header>
 
@@ -18,7 +18,7 @@
       :style="bodyGridStyle"
     >
       <aside v-show="!layout.fullTerminal" class="left">
-        <div class="side-head">功能菜单</div>
+        <div class="side-head">{{ mainLayoutText.sideMenuTitle }}</div>
         <el-menu :default-active="layout.activeMenu" class="menu">
           <el-menu-item
             v-for="item in visibleMenus"
@@ -35,7 +35,7 @@
         v-show="!layout.fullTerminal"
         class="splitter splitter-left"
         type="button"
-        title="Drag resize"
+        :title="mainLayoutText.dragResizeTitle"
         @mousedown="startResize('left', $event)"
       ></button>
 
@@ -47,7 +47,7 @@
         v-show="!layout.fullTerminal"
         class="splitter splitter-right"
         type="button"
-        title="Drag resize"
+        :title="mainLayoutText.dragResizeTitle"
         @mousedown="startResize('right', $event)"
       ></button>
 
@@ -61,6 +61,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { appConfig } from '@/config/app/app.config'
+import { mainLayoutSizeConfig, mainLayoutText } from '@/config/layout/layout.config'
 import { menuConfig } from '@/config/menu/menu.config'
 import { menuPermissionKeyMap } from '@/config/permission/permission.map'
 import { useAuthStore } from '@/stores/auth'
@@ -74,19 +75,19 @@ const projectStore = useProjectStore()
 const terminalStore = useTerminalStore()
 const appName = appConfig.appName
 const bodyRef = ref(null)
-const defaultLeftWidth = 220
-const defaultRightWidth = 500
+const defaultLeftWidth = mainLayoutSizeConfig.defaultLeftWidth
+const defaultRightWidth = mainLayoutSizeConfig.defaultRightWidth
 const leftWidth = ref(defaultLeftWidth)
 const rightWidth = ref(defaultRightWidth)
 const resizingType = ref('')
 const dragState = ref(null)
 
-const minLeftWidth = 112
-const minCenterWidth = 980
-const centerGuardWidth = 1450
-const minRightWidth = 340
-const splitterWidth = 8
-const bodyGap = 8
+const minLeftWidth = mainLayoutSizeConfig.minLeftWidth
+const minCenterWidth = mainLayoutSizeConfig.minCenterWidth
+const centerGuardWidth = mainLayoutSizeConfig.centerGuardWidth
+const minRightWidth = mainLayoutSizeConfig.minRightWidth
+const splitterWidth = mainLayoutSizeConfig.splitterWidth
+const bodyGap = mainLayoutSizeConfig.bodyGap
 const bodyGridStyle = computed(() => {
   if (layout.fullTerminal) return undefined
   return {
@@ -145,7 +146,11 @@ const visibleMenus = computed(() =>
   menuConfig.filter((m) => auth.hasMenu(menuPermissionKeyMap[m.key] || m.key)),
 )
 
-const userLabel = computed(() => `用户: ${auth.user?.username || '-'} 角色: ${auth.role || '-'}`)
+const userLabel = computed(() => {
+  const username = auth.user?.username || mainLayoutText.emptyValue
+  const role = auth.role || mainLayoutText.emptyValue
+  return `${mainLayoutText.userPrefix}: ${username} ${mainLayoutText.rolePrefix}: ${role}`
+})
 
 const logout = () => {
   terminalStore.reset()

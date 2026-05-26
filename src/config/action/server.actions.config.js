@@ -1,3 +1,4 @@
+/** 服务器列表行操作按钮配置。 */
 export const serverActionsConfig = [
   { code: 'add_user', label: '增加用户', styleType: 'ok' },
   { code: 'delete_user', label: '删除用户', styleType: 'danger' },

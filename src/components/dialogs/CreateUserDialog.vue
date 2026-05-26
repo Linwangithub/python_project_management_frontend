@@ -1,7 +1,7 @@
-﻿<template>
+<template>
   <el-dialog
     :model-value="modelValue"
-    title="创建账号"
+    :title="createUserDialogText.title"
     :width="width"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -15,13 +15,14 @@
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" @click="emit('confirm')">确认创建</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ dialogCommonText.cancel }}</el-button>
+      <el-button type="primary" @click="emit('confirm')">{{ dialogCommonText.confirmCreate }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
+import { createUserDialogText, dialogCommonText } from '@/config/dialog/dialog.text.config'
 defineProps(['modelValue', 'width', 'fields', 'form'])
 const emit = defineEmits(['update:modelValue', 'confirm'])
 </script>

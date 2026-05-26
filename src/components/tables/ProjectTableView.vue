@@ -12,12 +12,12 @@
     <template #cell-name="{ row }">
       <div class="project-name-cell">
         <span class="project-dot"></span>
-        <span class="project-name-text">{{ row.name || '-' }}</span>
+        <span class="project-name-text">{{ row.name || projectTableText.emptyDash }}</span>
       </div>
     </template>
 
     <template #cell-description="{ row }">
-      <span class="desc-text" :title="row.description || ''">{{ row.description || '未填写' }}</span>
+      <span class="desc-text" :title="row.description || ''">{{ row.description || projectTableText.notFilled }}</span>
     </template>
 
     <template #cell-serverIp="{ row }">
@@ -25,15 +25,15 @@
     </template>
 
     <template #cell-nginxInfo="{ row }">
-      <InfoStack :items="nginxItems(row)" tone="nginx" empty-text="未配置" />
+      <InfoStack :items="nginxItems(row)" tone="nginx" :empty-text="projectTableText.notConfigured" />
     </template>
 
     <template #cell-databaseInfo="{ row }">
-      <InfoStack :items="databaseItems(row)" tone="database" empty-text="未配置" />
+      <InfoStack :items="databaseItems(row)" tone="database" :empty-text="projectTableText.notConfigured" />
     </template>
 
     <template #cell-runningPort="{ row }">
-      <span class="field-value running-port-value" :class="{ empty: !row.runningPort }">{{ row.runningPort || '-' }}</span>
+      <span class="field-value running-port-value" :class="{ empty: !row.runningPort }">{{ row.runningPort || projectTableText.emptyDash }}</span>
     </template>
 
     <template #cell-serviceStatus="{ row }">
@@ -48,7 +48,7 @@
     </template>
 
     <template #cell-projectStatus="{ row }">
-      <el-tooltip :content="row.projectStatusDetail || '点击检测当前项目状态'" placement="top" :disabled="!row.projectStatusDetail">
+      <el-tooltip :content="row.projectStatusDetail || projectTableText.clickToCheckProjectStatus" placement="top" :disabled="!row.projectStatusDetail">
         <button
           class="health-btn"
           :class="healthStatusClass(row)"
@@ -65,16 +65,17 @@
 <script setup>
 import { h } from 'vue'
 import BaseTableView from '@/components/base/BaseTableView.vue'
+import { projectTableInfoLabels, projectTableText } from '@/config/table/project.columns.config'
 
 const InfoStack = (props) => {
   const rawItems = Array.isArray(props.items) ? props.items : []
   const toneClass = props.tone ? ` ${props.tone}` : ''
   const hasValue = rawItems.some((item) => item && item.value)
   if (!hasValue) {
-    return h('span', { class: `empty-info${toneClass}` }, props.emptyText || '未配置')
+    return h('span', { class: `empty-info${toneClass}` }, props.emptyText || projectTableText.notConfigured)
   }
   return h('div', { class: `info-stack${toneClass}` }, rawItems.map((item) => {
-    const value = item && item.value ? item.value : '未配置'
+    const value = item && item.value ? item.value : projectTableText.notConfigured
     const emptyClass = item && item.value ? '' : ' empty'
     return h('div', { class: `info-line${emptyClass}` }, `${item.label}: ${value}`)
   }))
@@ -87,14 +88,14 @@ const props = defineProps(['rows', 'columns', 'actionsLabel', 'actionsMinWidth',
 const emit = defineEmits(['action', 'health-check', 'service-check'])
 
 const nginxItems = (row) => [
-  { label: 'IP', value: row.nginxServerIp || '' },
-  { label: '前端', value: row.frontendPort || '' },
-  { label: '后端', value: row.backendDeployPort || '' },
+  { label: projectTableInfoLabels.ip, value: row.nginxServerIp || '' },
+  { label: projectTableInfoLabels.frontend, value: row.frontendPort || '' },
+  { label: projectTableInfoLabels.backend, value: row.backendDeployPort || '' },
 ]
 
 const databaseItems = (row) => [
   { label: 'IP', value: row.databaseHost || '' },
-  { label: '库', value: row.databaseName || '' },
+  { label: projectTableInfoLabels.database, value: row.databaseName || '' },
 ]
 
 
@@ -109,35 +110,35 @@ const isServiceChecking = (row) => {
 }
 
 const serviceStatusText = (row) => {
-  if (isServiceChecking(row)) return '检测中...'
-  return row?.serviceStatus || row?.status || '已停止'
+  if (isServiceChecking(row)) return projectTableText.checking
+  return row?.serviceStatus || row?.status || projectTableText.stopped
 }
 
 const serviceStatusClass = (row) => {
   const value = String(row?.serviceStatus || row?.status || '').trim()
-  return value === '运行中' ? 'running' : 'stopped'
+  return value === projectTableText.running ? 'running' : 'stopped'
 }
 
 const healthStatusText = (row) => {
-  if (isHealthChecking(row)) return '检测中...'
+  if (isHealthChecking(row)) return projectTableText.checking
   const value = String(row?.projectStatus || '').trim()
-  return value && value !== '未检测' ? value : '检测状态'
+  return value && value !== projectTableText.unchecked ? value : projectTableText.checkStatus
 }
 
 const healthStatusClass = (row) => {
   if (isHealthChecking(row)) return 'checking'
   const value = String(row?.projectStatus || '').trim()
-  if (value === '正常') return 'normal'
-  if (value === '异常') return 'abnormal'
+  if (value === projectTableText.normal) return 'normal'
+  if (value === projectTableText.abnormal) return 'abnormal'
   return 'unchecked'
 }
 
 const resolveCellClass = (columnKey, row) => {
   if (columnKey === 'serviceStatus' || columnKey === 'status') {
-    return row.serviceStatus === '运行中' || row.status === '运行中' ? 'st-run' : 'st-stop'
+    return row.serviceStatus === projectTableText.running || row.status === projectTableText.running ? 'st-run' : 'st-stop'
   }
   if (columnKey === 'projectStatus') {
-    return row.projectStatus === '异常' ? 'st-error' : 'st-ok'
+    return row.projectStatus === projectTableText.abnormal ? 'st-error' : 'st-ok'
   }
   return undefined
 }

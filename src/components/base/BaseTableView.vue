@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="view-table">
     <el-table class="pspm-data-table" :data="rows" size="small" height="100%" :header-cell-class-name="() => 'pspm-table-header'" :row-class-name="() => 'pspm-table-row'">
       <el-table-column
@@ -45,10 +45,11 @@
 </template>
 
 <script setup>
+import { baseTableText } from '@/config/table/project.columns.config'
 const props = defineProps({
   rows: { type: Array, default: () => [] },
   columns: { type: Array, default: () => [] },
-  actionsLabel: { type: String, default: '操作' },
+  actionsLabel: { type: String, default: baseTableText.actionsLabel },
   actionsMinWidth: { type: [Number, String], default: 160 },
   actions: { type: Array, default: () => [] },
   showActionsColumn: { type: Boolean, default: true },

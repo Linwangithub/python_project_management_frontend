@@ -2,6 +2,7 @@ import { computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { projectApi } from '@/api/project'
 import { getErrorMessage } from '@/utils/request'
+import { ROOT_ROLE_KEY, USER_ROLE_KEY } from '@/config/auth/auth.config'
 import {
   DB_PORT_MAX,
   DB_PORT_MIN,
@@ -10,6 +11,18 @@ import {
   DEFAULT_DB_USER,
   PROJECT_SYNCING_TEXT,
 } from '../dialogConstants'
+import {
+  ROOT_SYNC_BASE_PATH,
+  USER_SYNC_BASE_PATH_TEMPLATE,
+  formatUserPath,
+} from '@/config/project/project.paths.config'
+import {
+  projectDialogCommonText,
+  syncProjectDialogText,
+  syncProjectMessageFactory,
+  syncProjectMessages,
+  syncProjectPlaceholders,
+} from '@/config/project/project.dialog.messages.config'
 
 const normalizeJoinPath = (base, rel) => {
   const left = String(base || '').trim().replace(/\/+$/, '')
@@ -25,6 +38,13 @@ const isNginxModulesPath = (value) => {
   return path === '/usr/share/nginx/modules' || path.startsWith('/usr/share/nginx/modules/')
 }
 
+/**
+ * 同步已有项目弹框组合函数。
+ *
+ * 作用：
+ * - 管理服务器、项目目录、入口文件、Conda、Nginx、数据库等同步项的加载和校验。
+ * - 只负责前端弹框状态与接口编排，真实同步由后端接口执行。
+ */
 export const useSyncProjectDialog = (options) => {
   const {
     syncProjectForm,
@@ -37,12 +57,12 @@ export const useSyncProjectDialog = (options) => {
   })
 
   const getRootBasePath = () => {
-    const role = String(projectStore.currentRole?.value ?? projectStore.currentRole ?? 'user').trim()
-    if (role === 'root') {
-      return '/root'
+    const role = String(projectStore.currentRole?.value ?? projectStore.currentRole ?? USER_ROLE_KEY).trim()
+    if (role === ROOT_ROLE_KEY) {
+      return ROOT_SYNC_BASE_PATH
     }
-    const username = String(projectStore.currentUsername?.value ?? projectStore.currentUsername ?? 'user').trim() || 'user'
-    return `/home/${username}`
+    const username = String(projectStore.currentUsername?.value ?? projectStore.currentUsername ?? USER_ROLE_KEY).trim() || USER_ROLE_KEY
+    return formatUserPath(USER_SYNC_BASE_PATH_TEMPLATE, username)
   }
 
   const nginxExistingConfOptions = computed(() => {
@@ -72,56 +92,56 @@ export const useSyncProjectDialog = (options) => {
     return [
       {
         key: 'serverIp',
-        label: '服务器IP',
+        label: projectDialogCommonText.serverIp,
         component: 'select',
-        placeholder: '请选择服务器IP',
+        placeholder: syncProjectPlaceholders.chooseServerIp,
         options: serverIpOptions.value,
         span: 12,
       },
       {
         key: 'basePath',
-        label: '项目目录前缀',
+        label: syncProjectDialogText.projectDirPrefix,
         component: 'input',
         disabled: true,
         span: 12,
       },
       {
         key: 'projectPath',
-        label: '选择项目目录',
+        label: syncProjectDialogText.selectProjectDir,
         component: 'projectPathCascader',
         placeholder: serverSelected
-          ? (projectPathLoading ? '项目目录加载中...' : (projectPathReady ? '请选择已存在项目目录' : '服务器项目目录加载失败或未加载'))
-          : '请先选择服务器IP',
+          ? (projectPathLoading ? syncProjectPlaceholders.projectDirLoading : (projectPathReady ? syncProjectPlaceholders.chooseExistingProjectDir : syncProjectPlaceholders.projectDirLoadFailedOrNotLoaded))
+          : syncProjectPlaceholders.chooseServerFirst,
         options: syncProjectForm.projectPathOptions,
         disabled: !serverSelected || projectPathLoading || !projectPathReady,
         span: 12,
       },
       {
         key: 'entryPath',
-        label: '选择具体入口文件位置',
+        label: syncProjectDialogText.selectEntryFile,
         component: 'entryPathCascader',
-        placeholder: syncProjectForm.backendPath ? '请选择入口文件' : '请先选择项目目录',
+        placeholder: syncProjectForm.backendPath ? syncProjectPlaceholders.chooseEntryFile : syncProjectPlaceholders.chooseProjectDirFirst,
         options: syncProjectForm.entryPathOptions,
         disabled: !serverSelected || !String(syncProjectForm.backendPath || '').trim(),
         span: 12,
       },
       {
         key: 'backendPath',
-        label: '已选择项目目录',
+        label: syncProjectDialogText.selectedProjectDir,
         component: 'input',
         disabled: true,
         span: 24,
       },
       {
         key: 'entryFilePath',
-        label: '已选择入口文件位置',
+        label: syncProjectDialogText.selectedEntryFile,
         component: 'input',
         disabled: true,
         span: 24,
       },
       {
         key: 'name',
-        label: '项目名称',
+        label: projectDialogCommonText.projectName,
         component: 'input',
         placeholder: '',
         disabled: !serverSelected,
@@ -129,27 +149,27 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'description',
-        label: '项目描述',
+        label: projectDialogCommonText.projectDescription,
         component: 'textarea',
-        placeholder: '请输入项目描述',
+        placeholder: syncProjectPlaceholders.projectDescription,
         rows: 1,
         disabled: !serverSelected,
         span: 12,
       },
       {
         key: 'condaEnvName',
-        label: 'Conda环境',
+        label: projectDialogCommonText.condaEnv,
         component: 'select',
-        placeholder: '请选择已有Conda环境',
+        placeholder: syncProjectPlaceholders.chooseExistingCondaEnv,
         options: syncProjectForm.condaEnvOptions,
         disabled: !serverSelected || syncProjectForm.condaLoading,
         span: 12,
       },
       {
         key: 'condaCheck',
-        label: '检测该Conda环境中的Python版本',
+        label: syncProjectDialogText.condaPythonCheck,
         component: 'button',
-        buttonText: syncProjectForm.condaChecked ? '已检测' : '检测Python版本',
+        buttonText: syncProjectForm.condaChecked ? syncProjectDialogText.condaPythonChecked : syncProjectDialogText.condaPythonCheckButton,
         buttonType: syncProjectForm.condaChecked ? 'success' : 'primary',
         loading: !!syncProjectForm.condaChecking,
         disabled: !serverSelected || !String(syncProjectForm.condaEnvName || '').trim(),
@@ -157,7 +177,7 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'pythonVersion',
-        label: 'Python版本',
+        label: projectDialogCommonText.pythonVersion,
         component: 'input',
         placeholder: '',
         disabled: true,
@@ -165,18 +185,18 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'enableNginx',
-        label: 'Nginx配置',
+        label: projectDialogCommonText.nginxConfig,
         component: 'switch',
-        activeText: '启用',
-        inactiveText: '不启用',
+        activeText: projectDialogCommonText.enable,
+        inactiveText: projectDialogCommonText.disable,
         disabled: !serverSelected,
         span: 24,
       },
       {
         key: 'nginxServerIp',
-        label: 'Nginx服务器IP',
+        label: projectDialogCommonText.nginxServerIp,
         component: 'select',
-        placeholder: '请选择Nginx服务器IP',
+        placeholder: syncProjectPlaceholders.chooseNginxServerIp,
         options: serverIpOptions.value,
         disabled: !syncProjectForm.enableNginx,
         span: 12,
@@ -184,9 +204,9 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'nginxCheck',
-        label: '检测Nginx服务',
+        label: projectDialogCommonText.nginxServiceCheck,
         component: 'button',
-        buttonText: syncProjectForm.nginxChecked ? '已通过' : '检测Nginx',
+        buttonText: syncProjectForm.nginxChecked ? projectDialogCommonText.checkPassed : projectDialogCommonText.nginxCheckButton,
         buttonType: syncProjectForm.nginxChecked ? 'success' : 'primary',
         loading: !!syncProjectForm.nginxChecking,
         disabled: !syncProjectForm.enableNginx || !String(syncProjectForm.nginxServerIp || '').trim(),
@@ -195,7 +215,7 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'nginxConfPath',
-        label: 'Nginx配置文件路径',
+        label: projectDialogCommonText.nginxConfPath,
         component: 'nginxConfChooser',
         options: nginxExistingConfOptions.value,
         loading: !!syncProjectForm.nginxChecking,
@@ -205,13 +225,13 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'nginxFrontendPort',
-        label: 'Nginx前端端口',
+        label: projectDialogCommonText.nginxFrontendPort,
         component: 'select',
-        placeholder: nginxConfSelected ? '请选择已有listen端口' : '请先选择Nginx配置文件',
+        placeholder: nginxConfSelected ? syncProjectPlaceholders.chooseExistingListenPort : syncProjectPlaceholders.chooseNginxConfFirst,
         options: (syncProjectForm.nginxServerPortOptions || []).map((item) => ({
           label: String(item.frontend_port || ''),
           selectedLabel: String(item.frontend_port || ''),
-          optionLabel: `${item.frontend_port || ''} → ${item.backend_deploy_port || ''}`,
+          optionLabel: syncProjectMessageFactory.nginxPortOption(item.frontend_port, item.backend_deploy_port),
           value: String(item.frontend_port || ''),
         })),
         disabled: nginxPortDisabled || !(syncProjectForm.nginxServerPortOptions || []).length,
@@ -220,27 +240,27 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'nginxBackendPort',
-        label: '后端部署端口',
+        label: projectDialogCommonText.backendDeployPort,
         component: 'input',
-        placeholder: '选择前端端口后自动回显',
+        placeholder: syncProjectPlaceholders.backendPortAutoFill,
         disabled: true,
         span: 12,
         visible: syncProjectForm.enableNginx,
       },
       {
         key: 'enableDatabase',
-        label: '数据库配置',
+        label: projectDialogCommonText.databaseConfig,
         component: 'switch',
-        activeText: '启用',
-        inactiveText: '不启用',
+        activeText: projectDialogCommonText.enable,
+        inactiveText: projectDialogCommonText.disable,
         disabled: !serverSelected,
         span: 24,
       },
       {
         key: 'databaseHost',
-        label: '数据库IP',
+        label: projectDialogCommonText.databaseIp,
         component: 'selectCreate',
-        placeholder: '可选择或手动输入数据库IP',
+        placeholder: syncProjectPlaceholders.databaseIp,
         options: serverIpOptions.value,
         disabled: !syncProjectForm.enableDatabase,
         span: 12,
@@ -248,36 +268,36 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'databasePort',
-        label: '数据库端口',
+        label: projectDialogCommonText.databasePort,
         component: 'input',
-        placeholder: '例如 3306',
+        placeholder: syncProjectPlaceholders.databasePort,
         disabled: !syncProjectForm.enableDatabase,
         span: 12,
         visible: syncProjectForm.enableDatabase,
       },
       {
         key: 'databaseUser',
-        label: '数据库账号',
+        label: projectDialogCommonText.databaseUser,
         component: 'input',
-        placeholder: '例如 root',
+        placeholder: syncProjectPlaceholders.databaseUser,
         disabled: !syncProjectForm.enableDatabase,
         span: 12,
         visible: syncProjectForm.enableDatabase,
       },
       {
         key: 'databasePassword',
-        label: '数据库密码',
+        label: projectDialogCommonText.databasePassword,
         component: 'password',
-        placeholder: '请输入数据库密码',
+        placeholder: syncProjectPlaceholders.databasePassword,
         disabled: !syncProjectForm.enableDatabase,
         span: 12,
         visible: syncProjectForm.enableDatabase,
       },
       {
         key: 'databaseCheck',
-        label: '连接测试',
+        label: projectDialogCommonText.databaseConnectionTest,
         component: 'button',
-        buttonText: syncProjectForm.dbChecked ? '连接已通过' : 'Check',
+        buttonText: syncProjectForm.dbChecked ? projectDialogCommonText.databaseConnected : projectDialogCommonText.check,
         buttonType: syncProjectForm.dbChecked ? 'success' : 'primary',
         loading: !!syncProjectForm.dbChecking,
         disabled: !syncProjectForm.enableDatabase,
@@ -286,9 +306,9 @@ export const useSyncProjectDialog = (options) => {
       },
       {
         key: 'databaseName',
-        label: '数据库名称',
+        label: projectDialogCommonText.databaseName,
         component: 'select',
-        placeholder: '请选择已存在数据库',
+        placeholder: syncProjectPlaceholders.chooseExistingDatabase,
         options: syncProjectForm.databaseOptions,
         disabled: !syncProjectForm.enableDatabase,
         span: 12,
@@ -373,11 +393,11 @@ export const useSyncProjectDialog = (options) => {
         leaf: false,
       }))
       syncProjectForm.projectPathReady = true
-      ElMessage.success('服务器连接正常，已加载项目目录')
+      ElMessage.success(syncProjectMessages.serverProjectDirsLoaded)
     } catch (error) {
       syncProjectForm.projectPathOptions = []
       syncProjectForm.projectPathReady = false
-      ElMessage.error(getErrorMessage(error, '服务器不可用或项目目录读取失败'))
+      ElMessage.error(getErrorMessage(error, syncProjectMessages.serverProjectDirsLoadFailed))
     } finally {
       syncProjectForm.projectPathLoading = false
     }
@@ -430,7 +450,7 @@ export const useSyncProjectDialog = (options) => {
           leaf: false,
         })))
       } catch (error) {
-        ElMessage.error(getErrorMessage(error, '加载目录失败'))
+        ElMessage.error(getErrorMessage(error, syncProjectMessages.loadDirectoryFailed))
         payload.resolve([])
       }
     }
@@ -459,7 +479,7 @@ export const useSyncProjectDialog = (options) => {
       }))
     } catch (error) {
       syncProjectForm.entryPathOptions = []
-      ElMessage.error(getErrorMessage(error, '加载入口文件失败'))
+      ElMessage.error(getErrorMessage(error, syncProjectMessages.loadEntryFilesFailed))
     }
   }
 
@@ -484,7 +504,7 @@ export const useSyncProjectDialog = (options) => {
         leaf: !!item.leaf,
       })))
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '加载入口文件失败'))
+      ElMessage.error(getErrorMessage(error, syncProjectMessages.loadEntryFilesFailed))
       payload.resolve([])
     }
   }
@@ -498,7 +518,7 @@ export const useSyncProjectDialog = (options) => {
       syncProjectForm.condaEnvOptions = Array.isArray(data.envs) ? data.envs.map((x) => String(x || '').trim()).filter(Boolean) : []
     } catch (error) {
       syncProjectForm.condaEnvOptions = []
-      ElMessage.warning(getErrorMessage(error, '查询Conda环境失败'))
+      ElMessage.warning(getErrorMessage(error, syncProjectMessages.condaEnvQueryFailed))
     } finally {
       syncProjectForm.condaLoading = false
     }
@@ -508,7 +528,7 @@ export const useSyncProjectDialog = (options) => {
     const serverIp = String(syncProjectForm.serverIp || '').trim()
     const envName = String(syncProjectForm.condaEnvName || '').trim()
     if (!serverIp || !envName) {
-      ElMessage.warning('请选择服务器IP和Conda环境')
+      ElMessage.warning(syncProjectMessages.serverAndCondaRequired)
       return false
     }
     try {
@@ -521,11 +541,11 @@ export const useSyncProjectDialog = (options) => {
       syncProjectForm.condaEnvPath = data.env_path || ''
       syncProjectForm.pythonVersion = data.python_version || ''
       syncProjectForm.condaChecked = true
-      ElMessage.success('Conda环境可用')
+      ElMessage.success(syncProjectMessages.condaEnvAvailable)
       return true
     } catch (error) {
       syncProjectForm.condaChecked = false
-      ElMessage.error(getErrorMessage(error, 'Conda环境不可用'))
+      ElMessage.error(getErrorMessage(error, syncProjectMessages.condaEnvUnavailable))
       return false
     } finally {
       syncProjectForm.condaChecking = false
@@ -539,11 +559,11 @@ export const useSyncProjectDialog = (options) => {
     const username = String(syncProjectForm.databaseUser || '').trim()
     const password = String(syncProjectForm.databasePassword || '')
     if (!host || !username) {
-      ElMessage.warning('请填写数据库IP和账号')
+      ElMessage.warning(syncProjectMessages.databaseHostAndUserRequired)
       return false
     }
     if (!port || port < DB_PORT_MIN || port > DB_PORT_MAX) {
-      ElMessage.warning(`数据库端口不合法（${DB_PORT_MIN}-${DB_PORT_MAX}）`)
+      ElMessage.warning(syncProjectMessageFactory.databasePortInvalid(DB_PORT_MIN, DB_PORT_MAX))
       return false
     }
     try {
@@ -556,20 +576,20 @@ export const useSyncProjectDialog = (options) => {
         database_name: '',
       })
       const data = resp.data?.data || {}
-      const message = data.message || '连接成功，请选择要同步的数据库'
+      const message = data.message || syncProjectMessages.databaseConnectSuccessChooseDatabase
       syncProjectForm.databaseOptions = Array.isArray(data.databases) ? data.databases : []
       syncProjectForm.databaseName = ''
       syncProjectForm.dbChecked = true
       syncProjectForm.dbMessage = syncProjectForm.databaseOptions.length
-        ? `${message}，共 ${syncProjectForm.databaseOptions.length} 个可选数据库`
-        : '连接成功，但当前账号没有可选择的业务数据库'
+        ? syncProjectMessageFactory.databaseOptionsLoaded(message, syncProjectForm.databaseOptions.length)
+        : syncProjectMessages.databaseConnectSuccessNoDatabase
       ElMessage.success(message)
       return true
     } catch (error) {
       syncProjectForm.dbChecked = false
       syncProjectForm.databaseOptions = []
       syncProjectForm.databaseName = ''
-      syncProjectForm.dbMessage = getErrorMessage(error, '连接失败')
+      syncProjectForm.dbMessage = getErrorMessage(error, syncProjectMessages.databaseConnectFailed)
       ElMessage.warning(syncProjectForm.dbMessage)
       return false
     } finally {
@@ -582,7 +602,7 @@ export const useSyncProjectDialog = (options) => {
     const serverIp = String(syncProjectForm.serverIp || '').trim()
     const nginxServerIp = String(syncProjectForm.nginxServerIp || '').trim()
     if (!serverIp || !nginxServerIp) {
-      ElMessage.warning('请选择服务器IP和Nginx服务器IP')
+      ElMessage.warning(syncProjectMessages.serverAndNginxRequired)
       return false
     }
     try {
@@ -597,11 +617,11 @@ export const useSyncProjectDialog = (options) => {
       const confFiles = Array.isArray(data.conf_files) ? data.conf_files : []
       syncProjectForm.nginxConfOptions = confFiles.length ? confFiles : (confPath ? [{ path: confPath, source: 'main' }] : [])
       syncProjectForm.nginxChecked = true
-      ElMessage.success('Nginx服务可用')
+      ElMessage.success(syncProjectMessages.nginxServiceAvailable)
       return true
     } catch (error) {
       resetNginxState(false)
-      ElMessage.error(getErrorMessage(error, 'Nginx服务不可用'))
+      ElMessage.error(getErrorMessage(error, syncProjectMessages.nginxServiceUnavailable))
       return false
     } finally {
       syncProjectForm.nginxChecking = false
@@ -628,20 +648,20 @@ export const useSyncProjectDialog = (options) => {
       })
       const rows = Array.isArray(resp.data?.data?.options) ? resp.data.data.options : []
       syncProjectForm.nginxServerPortOptions = rows.map((item) => ({
-        label: `${item.frontend_port || ''} → ${item.backend_deploy_port || ''}`,
+        label: syncProjectMessageFactory.nginxPortOption(item.frontend_port, item.backend_deploy_port),
         frontend_port: String(item.frontend_port || ''),
         backend_deploy_port: String(item.backend_deploy_port || ''),
         server_name: item.server_name || '',
         nginx_config_text: item.nginx_config_text || '',
       })).filter((item) => item.frontend_port && item.backend_deploy_port)
       if (!syncProjectForm.nginxServerPortOptions.length) {
-        ElMessage.warning('所选Nginx配置文件中没有可同步的端口配置')
+        ElMessage.warning(syncProjectMessages.nginxNoPortOptions)
         return false
       }
-      ElMessage.success('已加载已有Nginx端口配置')
+      ElMessage.success(syncProjectMessages.nginxPortOptionsLoaded)
       return true
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, '加载Nginx端口配置失败'))
+      ElMessage.warning(getErrorMessage(error, syncProjectMessages.nginxPortOptionsLoadFailed))
       return false
     }
   }
@@ -673,7 +693,7 @@ export const useSyncProjectDialog = (options) => {
     if (serverIp && nginxIp && serverIp === nginxIp && frontend && backend && frontend === backend) {
       syncProjectForm.nginxFrontendPortChecked = false
       syncProjectForm.nginxBackendPortChecked = false
-      ElMessage.warning('服务器IP和Nginx服务器IP相同时，Nginx前端端口和后端部署端口不能相同')
+      ElMessage.warning(syncProjectMessages.nginxSameServerPortConflict)
       return false
     }
     return true
@@ -700,29 +720,29 @@ export const useSyncProjectDialog = (options) => {
         backend_deploy_port: backend,
       })
       const data = resp.data?.data || {}
-      ElMessage.success(data.message || '已找到匹配的Nginx配置')
+      ElMessage.success(data.message || syncProjectMessages.nginxMatched)
       return true
     } catch (error) {
-      ElMessage.warning(getErrorMessage(error, '未找到匹配的Nginx配置'))
+      ElMessage.warning(getErrorMessage(error, syncProjectMessages.nginxNotMatched))
       return false
     }
   }
 
   const ensureSyncProjectReady = async () => {
     if (!String(syncProjectForm.serverIp || '').trim()) {
-      ElMessage.warning('请选择服务器IP')
+      ElMessage.warning(syncProjectMessages.serverIpRequired)
       return false
     }
     if (!String(syncProjectForm.backendPath || '').trim()) {
-      ElMessage.warning('请选择项目目录')
+      ElMessage.warning(syncProjectMessages.projectDirRequired)
       return false
     }
     if (!String(syncProjectForm.entryFilePath || '').trim()) {
-      ElMessage.warning('请选择具体入口文件位置')
+      ElMessage.warning(syncProjectMessages.entryFileRequired)
       return false
     }
     if (!String(syncProjectForm.name || '').trim()) {
-      ElMessage.warning('请填写项目名称')
+      ElMessage.warning(syncProjectMessages.projectNameRequired)
       return false
     }
     if (!syncProjectForm.condaChecked) {
@@ -731,11 +751,11 @@ export const useSyncProjectDialog = (options) => {
     }
     if (syncProjectForm.enableNginx) {
       if (!syncProjectForm.nginxChecked) {
-        ElMessage.warning('请先检测Nginx服务')
+        ElMessage.warning(syncProjectMessages.nginxCheckRequired)
         return false
       }
       if (!String(syncProjectForm.nginxConfPath || '').trim()) {
-        ElMessage.warning('请选择Nginx配置文件')
+        ElMessage.warning(syncProjectMessages.nginxConfRequired)
         return false
       }
       if (!(syncProjectForm.nginxServerPortOptions || []).length) {
@@ -743,11 +763,11 @@ export const useSyncProjectDialog = (options) => {
         if (!loaded) return false
       }
       if (!String(syncProjectForm.nginxFrontendPort || '').trim()) {
-        ElMessage.warning('请选择已有Nginx前端端口')
+        ElMessage.warning(syncProjectMessages.nginxFrontendPortRequired)
         return false
       }
       if (!String(syncProjectForm.nginxBackendPort || '').trim()) {
-        ElMessage.warning('未找到该前端端口对应的后端部署端口')
+        ElMessage.warning(syncProjectMessages.nginxBackendPortNotFound)
         return false
       }
       if (!syncProjectForm.nginxFrontendPortChecked || !syncProjectForm.nginxBackendPortChecked) {
@@ -762,7 +782,7 @@ export const useSyncProjectDialog = (options) => {
       if (!ok) return false
     }
     if (syncProjectForm.enableDatabase && !String(syncProjectForm.databaseName || '').trim()) {
-      ElMessage.warning('请选择数据库名称')
+      ElMessage.warning(syncProjectMessages.databaseNameRequired)
       return false
     }
     return true
@@ -827,10 +847,10 @@ export const useSyncProjectDialog = (options) => {
         backend_deploy_port: String(syncProjectForm.nginxBackendPort || '').trim(),
         nginx_config_text: String(syncProjectForm.nginxSelectedServerBlock || ''),
       })
-      ElMessage.success(resp.data?.message || '同步成功')
+      ElMessage.success(resp.data?.message || syncProjectMessages.syncSuccess)
       await projectStore.loadBundle()
     } catch (error) {
-      ElMessage.error(getErrorMessage(error, '同步项目失败'))
+      ElMessage.error(getErrorMessage(error, syncProjectMessages.syncFailed))
       await projectStore.loadBundle()
     } finally {
       syncProjectForm.syncing = false

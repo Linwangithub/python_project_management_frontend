@@ -1,3 +1,4 @@
+/** 项目列表行操作按钮配置。 */
 export const projectActionsConfig = [
   { code: 'start_fg', label: '前台启动', styleType: 'ok' },
   { code: 'start_bg', label: '后台启动', styleType: 'ok' },

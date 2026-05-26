@@ -23,13 +23,38 @@ import {
   settingDialogFieldsConfig,
 } from '@/config/dialog/dialog.fields.config'
 import { menuPermissionKeyMap, actionPermissionKeyMap } from '@/config/permission/permission.map'
+import { USER_ROLE_KEY } from '@/config/auth/auth.config'
+import { DEFAULT_ACTIVE_MENU, DEFAULT_MEMBER_FILTER } from '@/config/layout/layout.config'
+import {
+  DASHBOARD_DEFAULT_ACTION_COLUMN,
+  DASHBOARD_DEFAULT_CENTER_HINT,
+  DASHBOARD_DEFAULT_CENTER_TITLE,
+  DASHBOARD_DEFAULT_DIALOG_WIDTHS,
+  DASHBOARD_DEFAULT_PROJECT_DELETE_TEXTS,
+  DASHBOARD_DEFAULT_PROJECT_DETAIL_TITLE,
+  DASHBOARD_DEFAULT_SERVER_DELETE_DANGER_TEXT,
+  DASHBOARD_DEFAULT_TOOL_BUTTONS,
+  DASHBOARD_DEFAULT_TOOL_DIALOG_TITLE,
+  DASHBOARD_DEFAULT_USER_DELETE_TEXTS,
+} from '@/config/preset/dashboard.defaults.config'
 
+/**
+ * Dashboard 视图预设组合函数。
+ *
+ * 作用：
+ * - 根据当前预设、菜单权限和动作权限计算可见菜单、列、按钮和弹框配置。
+ * - 将配置层与 Dashboard 页面渲染逻辑隔离。
+ */
 export const useDashboardPreset = (options) => {
   const { auth, layout, ui, projectStore } = options
 
-  const currentRole = computed(() => auth.role || 'user')
+  /** 当前用户角色，未登录时按普通用户处理。 */
+  const currentRole = computed(() => auth.role || USER_ROLE_KEY)
+
+  /** 把页面菜单 key 转成后端权限菜单 key。 */
   const permissionMenuKey = (menuKey) => menuPermissionKeyMap[menuKey] || menuKey
 
+  /** 当前用户可见菜单映射，用于主布局过滤菜单。 */
   const visibleMenuMap = computed(() =>
     Object.fromEntries(
       menuConfig
@@ -38,6 +63,16 @@ export const useDashboardPreset = (options) => {
     ),
   )
 
+  /**
+   * 判断某个菜单动作是否可用。
+   *
+   * 参数：
+   * - menuKey：前端菜单 key。
+   * - actionCode：前端动作 code。
+   *
+   * 返回：
+   * - true 表示当前用户拥有该动作权限。
+   */
   const canAction = (menuKey, actionCode) => {
     const mappedAction = actionPermissionKeyMap[menuKey]?.[actionCode]
     const menuPerm = permissionMenuKey(menuKey)
@@ -48,18 +83,22 @@ export const useDashboardPreset = (options) => {
     return auth.hasAction(menuPerm, mappedAction)
   }
 
+  /** 当前激活菜单配置。 */
   const currentMenu = computed(() => menuConfig.find((m) => m.key === layout.activeMenu))
 
+  /** 中心区域标题。 */
   const centerTitle = computed(() => {
-    return ui.currentPresetConfig.menus[layout.activeMenu]?.menuLabel || currentMenu.value?.label || '项目管理'
+    return ui.currentPresetConfig.menus[layout.activeMenu]?.menuLabel || currentMenu.value?.label || DASHBOARD_DEFAULT_CENTER_TITLE
   })
+  /** 中心区域说明。 */
   const centerHint = computed(() => {
     return (
       ui.currentPresetConfig.menus[layout.activeMenu]?.menuHint ||
-      '统一管理项目、端口、命令和状态，支持启动、停止、部署、复制、导出等操作。'
+      DASHBOARD_DEFAULT_CENTER_HINT
     )
   })
 
+  /** 当前菜单可见工具栏分组。 */
   const activeToolbarSections = computed(() => {
     return [...toolbarSectionsConfig]
       .filter((item) => item.menus.includes(layout.activeMenu))
@@ -67,11 +106,14 @@ export const useDashboardPreset = (options) => {
       .sort((a, b) => a.order - b.order)
   })
 
+  /** 切换视图预设。 */
   const onPresetChange = (preset) => {
     ui.setPreset(preset)
   }
 
+  /** 项目状态筛选值。 */
   const statusFilter = ref('')
+  /** 切换项目状态筛选。 */
   const toggleStatusFilter = (status) => {
     statusFilter.value = statusFilter.value === status ? '' : status
   }
@@ -79,16 +121,17 @@ export const useDashboardPreset = (options) => {
   watch(
     () => layout.activeMenu,
     (menu) => {
-      if (menu !== 'projects') {
+      if (menu !== DEFAULT_ACTIVE_MENU) {
         statusFilter.value = ''
       }
     },
   )
 
+  /** 根据成员和状态筛选后的项目列表。 */
   const filteredProjects = computed(() => {
     const member = layout.currentMemberFilter
     let rows = projectStore.projects
-    if (member !== 'all') {
+    if (member !== DEFAULT_MEMBER_FILTER) {
       rows = rows.filter((row) => row.owner === member)
     }
     if (statusFilter.value) {
@@ -97,14 +140,26 @@ export const useDashboardPreset = (options) => {
     return rows
   })
 
+  /** 根据成员筛选后的用户列表。 */
   const filteredUsers = computed(() => {
     const member = layout.currentMemberFilter
-    if (member === 'all') return projectStore.users
+    if (member === DEFAULT_MEMBER_FILTER) return projectStore.users
     return projectStore.users.filter((row) => row.username === member)
   })
 
+  /** 成员筛选选项。 */
   const memberFilterOptions = computed(() => projectStore.memberFilterOptions)
 
+  /**
+   * 按 key 从配置列表中挑选需要展示的字段。
+   *
+   * 参数：
+   * - source：完整字段配置。
+   * - keys：需要展示的字段 key 列表。
+   *
+   * 返回：
+   * - 过滤后的字段配置；keys 为空时返回完整配置。
+   */
   const pickFields = (source, keys) => {
     if (!keys || !keys.length) return source
     return source.filter((item) => keys.includes(item.key))
@@ -120,44 +175,44 @@ export const useDashboardPreset = (options) => {
   const createEnvDialogFieldsForView = computed(() => pickFields(createEnvDialogFieldsConfig, ui.currentPresetConfig.menus.envs?.createFields))
   const createServerDialogFieldsForView = computed(() => pickFields(createServerDialogFieldsConfig, ui.currentPresetConfig.menus.servers?.createFields))
 
-  const projectCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.createDialogWidth || '760px')
-  const userCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.users?.createDialogWidth || '460px')
-  const envCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.envs?.createDialogWidth || '520px')
-  const serverCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.servers?.createDialogWidth || '520px')
+  const projectCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.createDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.PROJECT_CREATE)
+  const userCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.users?.createDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.USER_CREATE)
+  const envCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.envs?.createDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.ENV_CREATE)
+  const serverCreateDialogWidth = computed(() => ui.currentPresetConfig.menus.servers?.createDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.SERVER_CREATE)
 
   const projectDetailFieldsForView = computed(() => pickFields(projectDetailFieldsConfig, ui.currentPresetConfig.menus.projects?.detailFields))
-  const projectDetailDrawerTitle = computed(() => ui.currentPresetConfig.menus.projects?.detailDrawerTitle || '项目详情')
-  const projectDetailDrawerSize = computed(() => ui.currentPresetConfig.menus.projects?.detailDrawerSize || '430px')
+  const projectDetailDrawerTitle = computed(() => ui.currentPresetConfig.menus.projects?.detailDrawerTitle || DASHBOARD_DEFAULT_PROJECT_DETAIL_TITLE)
+  const projectDetailDrawerSize = computed(() => ui.currentPresetConfig.menus.projects?.detailDrawerSize || DASHBOARD_DEFAULT_DIALOG_WIDTHS.DETAIL_DRAWER)
 
   const settingDialogFieldsForView = computed(() => pickFields(settingDialogFieldsConfig, ui.currentPresetConfig.menus.projects?.settingFields))
-  const settingDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.settingDialogWidth || '860px')
+  const settingDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.settingDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.SETTING)
 
   const copyDialogFieldsForView = computed(() => pickFields(copyDialogFieldsConfig, ui.currentPresetConfig.menus.projects?.copyFields))
-  const copyDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.copyDialogWidth || '560px')
+  const copyDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.copyDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.COPY)
 
   const exportDialogFieldsForView = computed(() => pickFields(exportDialogFieldsConfig, ui.currentPresetConfig.menus.projects?.exportFields))
-  const exportDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.exportDialogWidth || '560px')
+  const exportDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.exportDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.EXPORT)
 
   const sessionDialogFieldsForView = computed(() => pickFields(createSessionDialogFieldsConfig, ui.currentPresetConfig.menus.projects?.sessionFields))
-  const sessionDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.sessionDialogWidth || '560px')
+  const sessionDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.sessionDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.SESSION)
 
   const serverAddUserDialogFieldsForView = computed(() => addServerUserDialogFieldsConfig)
   const serverDeleteUserDialogFieldsForView = computed(() => deleteServerUserDialogFieldsConfig)
-  const serverUserDialogWidth = computed(() => '500px')
-  const serverDeleteDangerText = computed(() => '该操作不可逆，会清空该用户所有数据')
+  const serverUserDialogWidth = computed(() => DASHBOARD_DEFAULT_DIALOG_WIDTHS.SERVER_USER)
+  const serverDeleteDangerText = computed(() => DASHBOARD_DEFAULT_SERVER_DELETE_DANGER_TEXT)
 
-  const toolDialogTitle = computed(() => ui.currentPresetConfig.menus.projects?.toolDialogTitle || '项目工具')
-  const toolDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.toolDialogWidth || '620px')
+  const toolDialogTitle = computed(() => ui.currentPresetConfig.menus.projects?.toolDialogTitle || DASHBOARD_DEFAULT_TOOL_DIALOG_TITLE)
+  const toolDialogWidth = computed(() => ui.currentPresetConfig.menus.projects?.toolDialogWidth || DASHBOARD_DEFAULT_DIALOG_WIDTHS.TOOL)
   const toolButtonsForView = computed(() => {
-    return ui.currentPresetConfig.menus.projects?.toolButtons || ['数据库导出数据', '导出日志文件', '上传文件到项目', '下载项目文件']
+    return ui.currentPresetConfig.menus.projects?.toolButtons || DASHBOARD_DEFAULT_TOOL_BUTTONS
   })
 
-  const projectDeleteConfirmTitle = computed(() => ui.currentPresetConfig.menus.projects?.deleteConfirmTitle || '删除项目')
-  const projectDeleteConfirmTextTemplate = computed(() => ui.currentPresetConfig.menus.projects?.deleteConfirmText || '确定删除项目 {name} 吗？此操作不可逆。')
-  const projectDeleteSuccessTextTemplate = computed(() => ui.currentPresetConfig.menus.projects?.deleteSuccessText || '项目删除成功')
-  const userDeleteConfirmTitle = computed(() => ui.currentPresetConfig.menus.users?.deleteConfirmTitle || '删除用户确认')
-  const userDeleteConfirmTextTemplate = computed(() => ui.currentPresetConfig.menus.users?.deleteConfirmText || '确定要删除用户 {name} 吗？')
-  const userDeleteSuccessTextTemplate = computed(() => ui.currentPresetConfig.menus.users?.deleteSuccessText || '用户 {name} 删除成功')
+  const projectDeleteConfirmTitle = computed(() => ui.currentPresetConfig.menus.projects?.deleteConfirmTitle || DASHBOARD_DEFAULT_PROJECT_DELETE_TEXTS.TITLE)
+  const projectDeleteConfirmTextTemplate = computed(() => ui.currentPresetConfig.menus.projects?.deleteConfirmText || DASHBOARD_DEFAULT_PROJECT_DELETE_TEXTS.CONFIRM)
+  const projectDeleteSuccessTextTemplate = computed(() => ui.currentPresetConfig.menus.projects?.deleteSuccessText || DASHBOARD_DEFAULT_PROJECT_DELETE_TEXTS.SUCCESS)
+  const userDeleteConfirmTitle = computed(() => ui.currentPresetConfig.menus.users?.deleteConfirmTitle || DASHBOARD_DEFAULT_USER_DELETE_TEXTS.TITLE)
+  const userDeleteConfirmTextTemplate = computed(() => ui.currentPresetConfig.menus.users?.deleteConfirmText || DASHBOARD_DEFAULT_USER_DELETE_TEXTS.CONFIRM)
+  const userDeleteSuccessTextTemplate = computed(() => ui.currentPresetConfig.menus.users?.deleteSuccessText || DASHBOARD_DEFAULT_USER_DELETE_TEXTS.SUCCESS)
 
   const projectActions = computed(() => {
     const actionCodes = ui.currentPresetConfig.menus.projects?.showProjectActions
@@ -166,14 +221,14 @@ export const useDashboardPreset = (options) => {
       .filter((item) => canAction('projects', item.code))
   })
 
-  const projectActionsMinWidth = computed(() => ui.currentPresetConfig.menus.projects?.actionsMinWidth || 720)
-  const projectActionsLabel = computed(() => ui.currentPresetConfig.menus.projects?.actionsLabel || '操作')
-  const userActionsMinWidth = computed(() => ui.currentPresetConfig.menus.users?.actionsMinWidth || 90)
-  const userActionsLabel = computed(() => ui.currentPresetConfig.menus.users?.actionsLabel || '操作')
-  const envActionsMinWidth = computed(() => ui.currentPresetConfig.menus.envs?.actionsMinWidth || 140)
-  const envActionsLabel = computed(() => ui.currentPresetConfig.menus.envs?.actionsLabel || '操作')
-  const serverActionsMinWidth = computed(() => ui.currentPresetConfig.menus.servers?.actionsMinWidth || 180)
-  const serverActionsLabel = computed(() => ui.currentPresetConfig.menus.servers?.actionsLabel || '操作')
+  const projectActionsMinWidth = computed(() => ui.currentPresetConfig.menus.projects?.actionsMinWidth || DASHBOARD_DEFAULT_ACTION_COLUMN.PROJECT_MIN_WIDTH)
+  const projectActionsLabel = computed(() => ui.currentPresetConfig.menus.projects?.actionsLabel || DASHBOARD_DEFAULT_ACTION_COLUMN.LABEL)
+  const userActionsMinWidth = computed(() => ui.currentPresetConfig.menus.users?.actionsMinWidth || DASHBOARD_DEFAULT_ACTION_COLUMN.USER_MIN_WIDTH)
+  const userActionsLabel = computed(() => ui.currentPresetConfig.menus.users?.actionsLabel || DASHBOARD_DEFAULT_ACTION_COLUMN.LABEL)
+  const envActionsMinWidth = computed(() => ui.currentPresetConfig.menus.envs?.actionsMinWidth || DASHBOARD_DEFAULT_ACTION_COLUMN.ENV_MIN_WIDTH)
+  const envActionsLabel = computed(() => ui.currentPresetConfig.menus.envs?.actionsLabel || DASHBOARD_DEFAULT_ACTION_COLUMN.LABEL)
+  const serverActionsMinWidth = computed(() => ui.currentPresetConfig.menus.servers?.actionsMinWidth || DASHBOARD_DEFAULT_ACTION_COLUMN.SERVER_MIN_WIDTH)
+  const serverActionsLabel = computed(() => ui.currentPresetConfig.menus.servers?.actionsLabel || DASHBOARD_DEFAULT_ACTION_COLUMN.LABEL)
 
   const userActions = computed(() => userActionsConfig.filter((item) => canAction('users', item.code)))
   const envActions = computed(() => envActionsConfig.filter((item) => canAction('envs', item.code)))

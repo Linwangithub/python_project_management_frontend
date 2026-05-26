@@ -10,10 +10,10 @@
       <template v-if="detailSections.length">
         <div class="hero-card">
           <div>
-            <div class="hero-label">当前项目</div>
+            <div class="hero-label">{{ projectDetailDrawerText.currentProject }}</div>
             <div class="hero-title">{{ detailTitle }}</div>
           </div>
-          <el-tag v-if="statusText" effect="dark" :type="statusText === '运行中' ? 'success' : 'info'">
+          <el-tag v-if="statusText" effect="dark" :type="statusText === projectDetailDrawerText.running ? 'success' : 'info'">
             {{ statusText }}
           </el-tag>
         </div>
@@ -36,7 +36,7 @@
                 <template v-if="field.secret">
                   <span>{{ visibleSecrets[field.key] ? safeValue(field.value) : maskValue(field.value) }}</span>
                   <button class="secret-btn" @click="toggleSecret(field.key)">
-                    {{ visibleSecrets[field.key] ? '隐藏' : '查看' }}
+                    {{ visibleSecrets[field.key] ? projectDetailDrawerText.hideSecret : projectDetailDrawerText.showSecret }}
                   </button>
                 </template>
                 <pre v-else-if="isPre(field)">{{ safeValue(field.value) }}</pre>
@@ -47,20 +47,26 @@
         </div>
       </template>
 
-      <el-empty v-else description="暂无项目详情" />
+      <el-empty v-else :description="projectDetailDrawerText.emptyDescription" />
     </div>
   </el-drawer>
 </template>
 
 <script setup>
 import { computed, reactive } from 'vue'
+import {
+  projectDetailCondaText,
+  projectDetailDrawerText,
+  projectDetailPathText,
+  SECRET_MASK_TEXT,
+} from '@/config/project/project.detail.fields.config'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   project: { type: Object, default: null },
   detail: { type: Object, default: null },
   loading: { type: Boolean, default: false },
-  title: { type: String, default: '项目详情' },
+  title: { type: String, default: projectDetailDrawerText.title },
   size: { type: String, default: '520px' },
   fields: { type: Array, default: () => [] },
 })
@@ -72,7 +78,7 @@ const fallbackSections = computed(() => {
   if (!props.project || !props.fields.length) return []
   return [
     {
-      title: '基础信息',
+      title: projectDetailDrawerText.baseInfoTitle,
       fields: props.fields.map((field) => ({
         key: field.key,
         label: field.label,
@@ -85,7 +91,7 @@ const fallbackSections = computed(() => {
 })
 
 const detailSections = computed(() => normalizeDetailSections(props.detail?.sections || fallbackSections.value))
-const detailTitle = computed(() => props.detail?.project_name || props.project?.name || '-')
+const detailTitle = computed(() => props.detail?.project_name || props.project?.name || projectDetailDrawerText.emptyValue)
 const statusText = computed(() => {
   for (const section of detailSections.value) {
     const hit = (section.fields || []).find((field) => field.key === 'status')
@@ -94,10 +100,10 @@ const statusText = computed(() => {
   return props.project?.status || ''
 })
 
-const safeValue = (value) => String(value ?? '').trim() || '-'
+const safeValue = (value) => String(value ?? '').trim() || projectDetailDrawerText.emptyValue
 const maskValue = (value) => {
   const text = String(value ?? '').trim()
-  return text ? '••••••••' : '-'
+  return text ? SECRET_MASK_TEXT : projectDetailDrawerText.emptyValue
 }
 const normalizePath = (path) => String(path || '').replace(/\/+$/, '')
 const isAbsolutePath = (path) => /^([a-zA-Z]:[\\/]|\/)/.test(String(path || ''))
@@ -119,7 +125,7 @@ const normalizePathSectionFields = (fields) => {
     result.push({
       ...(backendPath || entryFilePath),
       key: 'backend_entry_path',
-      label: '后端入口文件位置',
+      label: projectDetailPathText.backendEntryLabel,
       value: joinPath(backendPath?.value, entryFilePath?.value),
       mono: true,
     })
@@ -128,7 +134,7 @@ const normalizePathSectionFields = (fields) => {
   if (frontendPath) {
     result.push({
       ...frontendPath,
-      label: '前端打包文件位置',
+      label: projectDetailPathText.frontendDistLabel,
       mono: true,
     })
   }
@@ -136,18 +142,18 @@ const normalizePathSectionFields = (fields) => {
   return result
 }
 const normalizeDetailSections = (sections) => (sections || []).map((section) => {
-  if (section.title === '路径信息') {
+  if (section.title === projectDetailPathText.sectionTitle) {
     return {
       ...section,
       fields: normalizePathSectionFields(section.fields),
     }
   }
 
-  if (section.title === 'Conda环境') {
+  if (section.title === projectDetailCondaText.sectionTitle) {
     return {
       ...section,
       fields: (section.fields || []).map((field) => (
-        field.key === 'conda_python_version' ? { ...field, label: '实际Python版本' } : field
+        field.key === 'conda_python_version' ? { ...field, label: projectDetailCondaText.actualPythonVersionLabel } : field
       )),
     }
   }
@@ -155,7 +161,7 @@ const normalizeDetailSections = (sections) => (sections || []).map((section) => 
   return section
 })
 const isPre = (field) => String(field?.value || '').includes('\n') || ['nginx_config_text'].includes(field?.key)
-const isWide = (field, section) => section?.title === '路径信息' || isPre(field) || String(field?.value || '').length > 48
+const isWide = (field, section) => section?.title === projectDetailPathText.sectionTitle || isPre(field) || String(field?.value || '').length > 48
 const toggleSecret = (key) => {
   visibleSecrets[key] = !visibleSecrets[key]
 }

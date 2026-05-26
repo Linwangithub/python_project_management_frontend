@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <BaseTableView
     :rows="rows"
     :columns="columns"

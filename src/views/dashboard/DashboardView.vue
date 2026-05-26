@@ -73,14 +73,14 @@
 
   <el-dialog
     v-model="downloadDialogVisible"
-    title="下载文件或目录"
+    :title="terminalDownloadDialogText.title"
     width="560px"
   >
     <el-form label-width="96px">
-      <el-form-item label="当前会话">
+      <el-form-item :label="terminalDownloadDialogText.currentSession">
         <span>{{ activeSessionAlias }}</span>
       </el-form-item>
-      <el-form-item label="下载路径">
+      <el-form-item :label="terminalDownloadDialogText.downloadPath">
         <el-cascader
           ref="downloadPathCascaderRef"
           v-model="downloadPathCascaderValue"
@@ -91,7 +91,7 @@
           filterable
           :show-all-levels="false"
           :loading="downloadDialogLoading"
-          placeholder="请选择要下载的文件或目录"
+          :placeholder="terminalDownloadDialogText.pathPlaceholder"
           @change="handleDownloadPathChange"
           @clear="clearDownloadPath"
         >
@@ -111,14 +111,14 @@
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="downloadDialogVisible = false">取消</el-button>
+      <el-button @click="downloadDialogVisible = false">{{ terminalDownloadDialogText.cancel }}</el-button>
       <el-button
         type="primary"
         :disabled="!downloadSelectedPath"
         :loading="downloadDialogLoading"
         @click="confirmDownloadFile"
       >
-        下载
+        {{ terminalDownloadDialogText.download }}
       </el-button>
     </template>
   </el-dialog>
@@ -237,6 +237,7 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import DashboardCenterPanel from '@/views/dashboard/components/DashboardCenterPanel.vue'
 import DashboardDialogsHost from '@/views/dashboard/components/DashboardDialogsHost.vue'
 import TerminalPanel from '@/views/dashboard/components/TerminalPanel.vue'
+import { terminalDownloadDialogText } from '@/config/terminal/terminal.messages.config'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useUiStore } from '@/stores/ui'

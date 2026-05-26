@@ -1,3 +1,4 @@
+/** 服务器管理表格列配置。 */
 export const serverColumnsConfig = [
   { key: 'ip', label: '服务器IP', minWidth: 160 },
   { key: 'rootPassword', label: 'root密码', minWidth: 140 },

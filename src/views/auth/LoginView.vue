@@ -13,31 +13,31 @@
       </div>
 
       <el-tabs v-model="activeTab" stretch class="auth-tabs">
-        <el-tab-pane label="账号登录" name="login">
+        <el-tab-pane :label="AUTH_VIEW_TEXT.loginTab" name="login">
           <el-form class="auth-form" label-position="top" autocomplete="off" @keyup.enter="onLogin">
-            <el-form-item label="账号">
-              <el-input v-model="loginForm.username" size="large" clearable autocomplete="off" placeholder="请输入账号" />
+            <el-form-item :label="AUTH_VIEW_TEXT.usernameLabel">
+              <el-input v-model="loginForm.username" size="large" clearable autocomplete="off" :placeholder="AUTH_VIEW_TEXT.usernamePlaceholder" />
             </el-form-item>
-            <el-form-item label="密码">
-              <el-input v-model="loginForm.password" size="large" type="password" autocomplete="new-password" show-password placeholder="请输入密码" />
+            <el-form-item :label="AUTH_VIEW_TEXT.passwordLabel">
+              <el-input v-model="loginForm.password" size="large" type="password" autocomplete="new-password" show-password :placeholder="AUTH_VIEW_TEXT.passwordPlaceholder" />
             </el-form-item>
             <el-button class="submit-btn" size="large" type="primary" :loading="submitting" @click="onLogin">
-              登录
+              {{ AUTH_VIEW_TEXT.loginButton }}
             </el-button>
             
           </el-form>
         </el-tab-pane>
 
-        <el-tab-pane label="注册账号" name="register">
+        <el-tab-pane :label="AUTH_VIEW_TEXT.registerTab" name="register">
           <el-form class="auth-form" label-position="top" autocomplete="off" @keyup.enter="onRegister">
-            <el-form-item label="账号">
-              <el-input v-model="registerForm.username" size="large" clearable autocomplete="off" placeholder="请输入新账号" />
+            <el-form-item :label="AUTH_VIEW_TEXT.usernameLabel">
+              <el-input v-model="registerForm.username" size="large" clearable autocomplete="off" :placeholder="AUTH_VIEW_TEXT.newUsernamePlaceholder" />
             </el-form-item>
-            <el-form-item label="密码">
-              <el-input v-model="registerForm.password" size="large" type="password" autocomplete="new-password" show-password placeholder="请输入密码" />
+            <el-form-item :label="AUTH_VIEW_TEXT.passwordLabel">
+              <el-input v-model="registerForm.password" size="large" type="password" autocomplete="new-password" show-password :placeholder="AUTH_VIEW_TEXT.passwordPlaceholder" />
             </el-form-item>
             <el-button class="submit-btn" size="large" type="primary" :loading="submitting" @click="onRegister">
-              注册
+              {{ AUTH_VIEW_TEXT.registerButton }}
             </el-button>
          
           </el-form>
@@ -52,6 +52,7 @@ import { nextTick, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { appConfig } from '@/config/app/app.config'
+import { AUTH_MESSAGES, AUTH_VIEW_TEXT } from '@/config/auth/auth.config'
 import { useAuthStore } from '@/stores/auth'
 
 const appName = appConfig.appName
@@ -86,41 +87,41 @@ onMounted(() => {
 const onLogin = async () => {
   const username = loginForm.username.trim()
   const password = loginForm.password.trim()
-  if (!username) return ElMessage.warning('请输入账号')
-  if (!password) return ElMessage.warning('请输入密码')
+  if (!username) return ElMessage.warning(AUTH_MESSAGES.USERNAME_REQUIRED)
+  if (!password) return ElMessage.warning(AUTH_MESSAGES.PASSWORD_REQUIRED)
 
   submitting.value = true
   const result = await auth.login({ username, password })
   submitting.value = false
 
   if (!result.ok) {
-    ElMessage.error(result.message || '登录失败')
-    if ((result.message || '').includes('该账号不存在')) {
+    ElMessage.error(result.message || AUTH_MESSAGES.LOGIN_FAILED)
+    if ((result.message || '').includes(AUTH_MESSAGES.ACCOUNT_NOT_EXISTS)) {
       registerForm.username = username
       registerForm.password = password
       activeTab.value = 'register'
     }
     return
   }
-  ElMessage.success('登录成功')
+  ElMessage.success(AUTH_MESSAGES.LOGIN_SUCCESS)
   router.push('/dashboard')
 }
 
 const onRegister = async () => {
   const username = registerForm.username.trim()
   const password = registerForm.password.trim()
-  if (!username) return ElMessage.warning('请输入账号')
-  if (!password) return ElMessage.warning('请输入密码')
+  if (!username) return ElMessage.warning(AUTH_MESSAGES.USERNAME_REQUIRED)
+  if (!password) return ElMessage.warning(AUTH_MESSAGES.PASSWORD_REQUIRED)
 
   submitting.value = true
   const result = await auth.register({ username, password })
   submitting.value = false
 
   if (!result.ok) {
-    ElMessage.error(result.message || '注册失败')
+    ElMessage.error(result.message || AUTH_MESSAGES.REGISTER_FAILED)
     return
   }
-  ElMessage.success(result.message || '注册成功，请登录')
+  ElMessage.success(result.message || AUTH_MESSAGES.REGISTER_SUCCESS)
   loginForm.username = username
   loginForm.password = password
   activeTab.value = 'login'
