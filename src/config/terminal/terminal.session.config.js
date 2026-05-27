@@ -97,7 +97,6 @@ export const TERMINAL_UPLOAD_TARGET_PATH = ''
 export const TERMINAL_UPLOAD_INPUT_CONFIG = {
   type: 'file',
   multiple: true,
-  hiddenDisplay: 'none',
 }
 
 /** 原生下载链接配置。 */

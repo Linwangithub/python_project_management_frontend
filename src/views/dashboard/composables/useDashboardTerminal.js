@@ -30,7 +30,6 @@ import {
   TERMINAL_SESSION_FIELD_KEYS,
   TERMINAL_TAB_REPEAT_MS,
   TERMINAL_TASK_SUFFIX,
-  TERMINAL_UPLOAD_INPUT_CONFIG,
   TERMINAL_UPLOAD_TARGET_PATH,
   TERMINAL_WS_MESSAGE_TYPES,
 } from '@/config/terminal/terminal.session.config'
@@ -651,25 +650,11 @@ export const useDashboardTerminal = (options) => {
     return session
   }
 
-  const pickUploadEntries = () => new Promise((resolve) => {
-    const input = document.createElement('input')
-    input.type = TERMINAL_UPLOAD_INPUT_CONFIG.type
-    input.multiple = TERMINAL_UPLOAD_INPUT_CONFIG.multiple
-    input.style.display = TERMINAL_UPLOAD_INPUT_CONFIG.hiddenDisplay
-    input.onchange = () => {
-      const files = Array.from(input.files || [])
-      document.body.removeChild(input)
-      resolve(files)
-    }
-    document.body.appendChild(input)
-    input.click()
-  })
-
-  const uploadFile = async () => {
+  const uploadFile = async (selectedFiles = []) => {
     const session = ensureActiveTransferSession()
     if (!session) return
 
-    const files = await pickUploadEntries()
+    const files = Array.isArray(selectedFiles) ? selectedFiles : []
     if (!files.length) return
 
     try {

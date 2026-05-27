@@ -58,7 +58,7 @@
         @update:command-input="commandInput = $event"
         @console-mounted="(el) => { if (el) terminal.consoleRef.value = el }"
         @open-session="openSessionDialog"
-        @upload="uploadFile"
+        @upload-files="uploadFile"
         @download="downloadFile"
         @switch-session="switchSession"
         @add-sibling-session="addSiblingSession"

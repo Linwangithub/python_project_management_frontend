@@ -25,7 +25,15 @@
       <span>{{ terminalPanelText.title }}</span>
       <div class="head-actions">
         <el-button size="small" @click="emit('open-session')">{{ terminalPanelText.createSession }}</el-button>
-        <el-button size="small" @click="emit('upload')">{{ terminalPanelText.upload }}</el-button>
+        <el-button size="small" @click="openUploadFilePicker">{{ terminalPanelText.upload }}</el-button>
+        <input
+          ref="uploadInputRef"
+          class="upload-file-input"
+          :type="TERMINAL_UPLOAD_INPUT_CONFIG.type"
+          :multiple="TERMINAL_UPLOAD_INPUT_CONFIG.multiple"
+          :aria-label="terminalPanelText.upload"
+          @change="handleUploadInputChange"
+        />
         <el-button size="small" @click="emit('download')">{{ terminalPanelText.download }}</el-button>
       </div>
     </div>
@@ -66,13 +74,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { TERMINAL_EMPTY_LINE_PLACEHOLDER } from '@/config/terminal/terminal.control.config'
 import { terminalMessages, terminalPanelText } from '@/config/terminal/terminal.messages.config'
+import { TERMINAL_UPLOAD_INPUT_CONFIG } from '@/config/terminal/terminal.session.config'
 
 const props = defineProps(['terminalStore', 'terminalLines', 'commandInput', 'activeSessionLocked', 'activeSessionLockReason'])
 
 const emit = defineEmits([
   'update:command-input',
   'open-session',
-  'upload',
+  'upload-files',
   'download',
   'switch-session',
   'add-sibling-session',
@@ -88,6 +97,20 @@ const commandInputProxy = computed({
   get: () => props.commandInput,
   set: (value) => emit('update:command-input', value),
 })
+
+const uploadInputRef = ref(null)
+
+const openUploadFilePicker = () => {
+  uploadInputRef.value?.click()
+}
+
+const handleUploadInputChange = (event) => {
+  const input = event.target
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (!files.length) return
+  emit('upload-files', files)
+}
 
 const consoleRef = ref(null)
 onMounted(() => {
@@ -172,6 +195,16 @@ onMounted(() => {
 .head-actions {
   display: flex;
   gap: 8px;
+}
+
+.upload-file-input {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .console {
