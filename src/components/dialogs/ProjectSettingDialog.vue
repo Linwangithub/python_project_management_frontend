@@ -693,10 +693,45 @@ const isDeployCommandEditable = computed(() => {
   return !!props.form?.deployCommandModifyEnabled
 })
 
+const buildEntryPathDisplayOptions = (relativePath) => {
+  const backendPath = String(props.form?.backendPath || '').trim()
+  const segments = String(relativePath || '').trim().split('/').filter(Boolean)
+  const rootNode = {
+    value: ROOT_PATH_VALUE,
+    label: backendPath ? `${backendPath}/` : settingText.projectDirFallback,
+    leaf: false,
+  }
+
+  if (!segments.length) {
+    entryPathOptions.value = [rootNode]
+    return
+  }
+
+  rootNode.children = []
+  let currentNode = rootNode
+  for (let index = 0; index < segments.length; index += 1) {
+    const isLeaf = index === segments.length - 1
+    const value = segments.slice(0, index + 1).join('/')
+    const node = {
+      value,
+      label: isLeaf ? segments[index] : `${segments[index]}/`,
+      leaf: isLeaf,
+    }
+    if (!isLeaf) {
+      node.children = []
+    }
+    currentNode.children.push(node)
+    currentNode = node
+  }
+  entryPathOptions.value = [rootNode]
+}
+
 const restoreOriginalEntryFilePath = () => {
   if (!props.form) return
+  const relativePath = toProjectRelativePath(props.form.backendPath, originalBaseConfig.entryFilePath)
   props.form.entryFilePath = originalBaseConfig.entryFilePath
-  props.form.entryFilePathCascaderValue = buildCascaderPathValues(toProjectRelativePath(props.form.backendPath, originalBaseConfig.entryFilePath))
+  props.form.entryFilePathCascaderValue = buildCascaderPathValues(relativePath)
+  buildEntryPathDisplayOptions(relativePath)
   entryPathCascaderValue.value = [...props.form.entryFilePathCascaderValue]
 }
 

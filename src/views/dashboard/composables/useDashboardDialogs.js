@@ -804,7 +804,7 @@ export const useDashboardDialogs = (options) => {
     if (projectStore.isProjectServiceChecking(project.id)) return
     projectStore.setProjectServiceChecking(project.id, true)
     try {
-      const resp = await projectApi.checkProjectHealth(project.id)
+      const resp = await projectApi.checkProjectServiceStatus(project.id)
       const data = resp.data?.data || {}
       projectStore.updateProjectServiceStatus(project.id, data)
       const statusText = data.service_status || data.serviceStatus || data.status || PROJECT_STOPPED_TEXT
@@ -1162,6 +1162,3 @@ export const useDashboardDialogs = (options) => {
     confirmDeleteServerUser,
   }
 }
-
-
-

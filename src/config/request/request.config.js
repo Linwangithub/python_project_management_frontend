@@ -10,7 +10,7 @@
 export const TOKEN_STORAGE_KEY = 'pspm_token'
 
 /** Axios（HTTP 请求库）默认超时时间，单位毫秒。 */
-export const REQUEST_TIMEOUT_MS = 15000
+export const REQUEST_TIMEOUT_MS = 30000
 
 /** HTTP 鉴权请求头名称。 */
 export const AUTHORIZATION_HEADER = 'Authorization'

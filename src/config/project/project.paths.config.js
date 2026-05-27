@@ -11,7 +11,7 @@
 export const ROOT_PROJECT_BASE_PATH = '/root/project'
 
 /** root 用户同步已有项目时的默认起始目录。 */
-export const ROOT_SYNC_BASE_PATH = '/root'
+export const ROOT_SYNC_BASE_PATH = '/'
 
 /** 终端会话默认工作目录。 */
 export const TERMINAL_DEFAULT_HOME_DIR = '/root'

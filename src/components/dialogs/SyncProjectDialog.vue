@@ -192,6 +192,14 @@ const emit = defineEmits([
   'nginx-frontend-port-change',
 ])
 
+const joinLinuxPath = (base, rel) => {
+  const left = String(base || '').trim().replace(/\/+$/, '')
+  const right = String(rel || '').trim().replace(/^\/+/, '')
+  if (!right) return ''
+  if (!left) return `/${right}`
+  return `${left}/${right}`
+}
+
 const confirmDisabled = computed(() => {
   const form = props.form || {}
   if (!String(form.serverIp || '').trim()) return true
@@ -251,7 +259,7 @@ const handleProjectPathChange = (values) => {
   const form = props.form || {}
   const last = list.length ? String(list[list.length - 1] || '').trim() : ''
   form.projectRelPath = last
-  form.backendPath = last ? `${String(form.basePath || '').replace(/\/+$/, '')}/${last}` : ''
+  form.backendPath = joinLinuxPath(form.basePath, last)
   form.entryPathCascaderValue = []
   form.entryRelPath = ''
   form.entryFilePath = ''
@@ -277,7 +285,7 @@ const handleEntryPathChange = (values) => {
   const form = props.form || {}
   const last = list.length ? String(list[list.length - 1] || '').trim() : ''
   form.entryRelPath = last
-  form.entryFilePath = last ? `${String(form.backendPath || '').replace(/\/+$/, '')}/${last}` : ''
+  form.entryFilePath = joinLinuxPath(form.backendPath, last)
 }
 
 const handleEntryPathClear = () => {

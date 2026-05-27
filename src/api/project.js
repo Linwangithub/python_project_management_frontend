@@ -37,6 +37,10 @@ export const projectApi = {
   checkProjectHealth(projectId) {
     return request.get('/pspm/projects/health', { params: { project_id: projectId } })
   },
+  /** 轻量检测项目服务运行状态，只检查进程和监听端口。 */
+  checkProjectServiceStatus(projectId) {
+    return request.get('/pspm/projects/service-status', { params: { project_id: projectId } })
+  },
   /** 创建服务器记录。 */
   createServer(payload) {
     return request.post('/pspm/servers/create', {
@@ -268,4 +272,3 @@ export const projectApi = {
     })
   },
 }
-
